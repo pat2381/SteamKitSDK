@@ -356,17 +356,6 @@ public class SteamContentClient : IAsyncDisposable
             return new LegacyDownloadHandler(publishedFileDetails.file_url, publishedFileDetails.filename);
         }
 
-        // Request access if necessary
-        if (!await GetHasAccessAsync(publishedFileDetails.consumer_appid, cancellationToken))
-        {
-            var gotFreeLicense = await GetFreeLicenseAsync(publishedFileDetails.consumer_appid, cancellationToken);
-
-            if (!gotFreeLicense)
-            {
-                throw new SteamRequiredLicenseNotFoundException(publishedFileDetails.consumer_appid);
-            }
-        }
-
         manifestId ??= publishedFileDetails.hcontent_file;
 
         if (!manifestId.HasValue || manifestId.Value == 0)
@@ -411,10 +400,7 @@ public class SteamContentClient : IAsyncDisposable
         {
             try
             {
-                if (!await GetHasAccessAsync(depot.Id, cancellationToken))
-                {
-                    throw new SteamDepotAccessDeniedException(depot.Id);
-                }
+                await EnsureDepotAccessAsync(appId, depot.Id, cancellationToken);
                 
                 if (depot.Manifests.Any())
                 {
@@ -870,23 +856,18 @@ public class SteamContentClient : IAsyncDisposable
         bool isUserGeneratedContent = false,
         CancellationToken cancellationToken = default)
     {
-        if (!await GetHasAccessAsync(appId, cancellationToken))
-        {
-            var gotFreeLicense = await GetFreeLicenseAsync(appId, cancellationToken);
-
-            if (!gotFreeLicense)
-            {
-                throw new SteamDepotAccessDeniedException(depotId);
-            }
-        }
-
         if (isUserGeneratedContent)
         {
             var appInfo = await GetAppInfoAsync(appId, cancellationToken);
             var depotsRaw = appInfo.KeyValues.Children.First(x => x.Name == "depots");
 
             depotId = depotsRaw["workshopdepot"].AsUnsignedInteger();
+        }
 
+        await EnsureAppAccessAsync(appId, depotId, cancellationToken);
+
+        if (isUserGeneratedContent)
+        {
             return new DefaultDownloadHandler(
                 this,
                 await GetManifestAsync(
@@ -1128,8 +1109,58 @@ public class SteamContentClient : IAsyncDisposable
         return false;
     }
 
+    private async Task EnsureDepotAccessAsync(
+        AppId appId,
+        DepotId depotId,
+        CancellationToken cancellationToken)
+    {
+        if (SteamClient.Credentials.IsAnonymous)
+        {
+            // Anonymous accounts do not receive a complete license list. Steam's depot-key response is the
+            // authoritative access decision for an anonymous content-download request.
+            await GetDepotKeyAsync(depotId, appId);
+            return;
+        }
+
+        if (!await GetHasAccessAsync(depotId, cancellationToken))
+        {
+            throw new SteamDepotAccessDeniedException(depotId);
+        }
+    }
+
+    private async Task EnsureAppAccessAsync(
+        AppId appId,
+        DepotId depotId,
+        CancellationToken cancellationToken)
+    {
+        if (SteamClient.Credentials.IsAnonymous)
+        {
+            // Do not request a free license anonymously: Steam does not provide a callback for that flow.
+            // The depot-key response decides whether the requested content can be downloaded.
+            await GetDepotKeyAsync(depotId, appId);
+            return;
+        }
+
+        if (await GetHasAccessAsync(appId, cancellationToken))
+        {
+            return;
+        }
+
+        var gotFreeLicense = await GetFreeLicenseAsync(appId, cancellationToken);
+
+        if (!gotFreeLicense)
+        {
+            throw new SteamDepotAccessDeniedException(depotId);
+        }
+    }
+
     internal async Task<bool> GetFreeLicenseAsync(AppId appId, CancellationToken cancellationToken = default)
     {
+        if (SteamClient.Credentials.IsAnonymous)
+        {
+            return false;
+        }
+
         var result = await SteamApps.RequestFreeLicense(appId).ToTask().WaitAsync(cancellationToken);
 
         return result.GrantedApps.Contains(appId);

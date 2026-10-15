@@ -233,7 +233,7 @@
       "steamkitsdk.windows": {
         "type": "Project",
         "dependencies": {
-          "SteamKitSDK": "[0.9.1, )",
+          "SteamKitSDK": "[0.9.2, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.13, )"
         }
       }

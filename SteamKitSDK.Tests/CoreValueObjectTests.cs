@@ -64,6 +64,17 @@ public sealed class CoreValueObjectTests
     }
 
     [Fact]
+    public async Task GetFreeLicenseAsync_AnonymousClient_ReturnsFalseWithoutSteamRequest()
+    {
+        using var steamClient = new SteamClient();
+        await using var contentClient = new SteamContentClient(steamClient);
+
+        var granted = await contentClient.GetFreeLicenseAsync(440);
+
+        Assert.False(granted);
+    }
+
+    [Fact]
     public void SteamClient_NonAnonymousCredentialsRequireAuthenticator()
     {
         var credentials = new SteamCredentials("username", "password");

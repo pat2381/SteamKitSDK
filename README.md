@@ -113,7 +113,7 @@ Generated output, IDE files, local test results, credentials, and test-client do
 
 - Target framework: .NET 10
 - SteamKit2: 3.4.0
-- Package status: pre-1.0 (`0.9.1`); public APIs may change before 1.0
+- Package status: pre-1.0 (`0.9.2`); public APIs may change before 1.0
 - Current encrypted V2 depot manifests are supported through Steam's branch-password flow. Legacy V1 encrypted manifest identifiers are intentionally not supported by SteamKit2 3.4.
 
 ## License

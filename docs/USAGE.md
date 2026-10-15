@@ -1,11 +1,11 @@
 # SteamKitSDK Usage Guide
 
-This guide covers the APIs in version 0.9.1. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
+This guide covers the APIs in version 0.9.2. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
 
 ## Installation
 
 ```powershell
-dotnet add package SteamKitSDK --version 0.9.1
+dotnet add package SteamKitSDK --version 0.9.2
 ```
 
 The project requires .NET 10. A signed-in Steam account is required to download owned games or Workshop content.
@@ -59,7 +59,7 @@ Environment variables keep the password out of source code and shell history. Pr
 For desktop applications, use the optional `SteamKitSDK.Windows` package. It does not reference WPF or Windows Forms, so it can support either UI framework. `DesktopSteamAuthenticator` connects SDK sign-in to three UI callbacks; `DpapiSteamAuthenticationStore` encrypts access tokens and guard data with Windows DPAPI in the context of the signed-in Windows user.
 
 ```powershell
-dotnet add package SteamKitSDK.Windows --version 0.9.1
+dotnet add package SteamKitSDK.Windows --version 0.9.2
 ```
 
 Dialogs must be displayed on the application's UI thread: use `Dispatcher.InvokeAsync` in WPF and `Control.InvokeAsync` in Windows Forms. The following callbacks represent your own dialogs and must honor that threading requirement:
@@ -288,6 +288,8 @@ var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 
 `SteamKitSDK.TestClient` is a small console client for controlled real-world smoke tests. It accepts no credentials via command-line arguments and stores no tokens. Steam Guard and mobile confirmation are prompted interactively through `ConsoleSteamAuthenticator`.
 
+For publicly available dedicated-server content, it also supports an anonymous Steam session. This mode can access only content Steam explicitly authorizes for anonymous download.
+
 The interactive menu asks for the Steam username and password when the environment variables below are not set. Password input is masked and is neither persisted nor displayed.
 
 Before starting, credentials only need to be available as environment variables for the current process:
@@ -305,6 +307,9 @@ dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --list-branches
 
 # 2. Check the manifest and local files without downloading.
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --verify-only
+
+# 2a. Check an anonymously available dedicated-server depot without downloading.
+dotnet run --project SteamKitSDK.TestClient -- --app-id 3792580 --depot-id 3792581 --anonymous --verify-only
 
 # 3. Start the download after explicit confirmation.
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 `

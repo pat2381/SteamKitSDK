@@ -266,17 +266,30 @@ public static class Program
             return 0;
         }
 
-        var username = ReadCredential("STEAM_USERNAME", "Steam-Benutzername", secret: false);
-        var password = ReadCredential("STEAM_PASSWORD", "Steam-Passwort", secret: true);
-        var webApiKey = Environment.GetEnvironmentVariable("STEAM_WEB_API_KEY");
+        SteamCredentials steamCredentials;
+        SteamAuthenticator? steamAuthenticator;
 
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        if (options.Anonymous)
         {
-            Console.Error.WriteLine("Steam-Benutzername und Steam-Passwort sind erforderlich.");
-            return 64;
+            steamCredentials = SteamCredentials.Anonymous;
+            steamAuthenticator = null;
+            Console.WriteLine("Steam: anonyme Sitzung wird verwendet.");
         }
+        else
+        {
+            var username = ReadCredential("STEAM_USERNAME", "Steam-Benutzername", secret: false);
+            var password = ReadCredential("STEAM_PASSWORD", "Steam-Passwort", secret: true);
+            var webApiKey = Environment.GetEnvironmentVariable("STEAM_WEB_API_KEY");
 
-        var steamCredentials = new SteamCredentials(username, password, webApiKey);
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            {
+                Console.Error.WriteLine("Steam-Benutzername und Steam-Passwort sind erforderlich. Alternativ kann --anonymous verwendet werden.");
+                return 64;
+            }
+
+            steamCredentials = new SteamCredentials(username, password, webApiKey);
+            steamAuthenticator = new ConsoleSteamAuthenticator(steamCredentials.Username);
+        }
 
         using var cancellationTokenSource = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -294,7 +307,7 @@ public static class Program
         {
             using var steamClient = new SteamClient(
                 steamCredentials,
-                new ConsoleSteamAuthenticator(steamCredentials.Username));
+                steamAuthenticator);
             await using var steamContentClient = new SteamContentClient(
                 steamClient,
                 options.MaxConcurrency);
@@ -497,6 +510,9 @@ public static class Program
                 case "--verify-only":
                     options = options with { VerifyOnly = true };
                     break;
+                case "--anonymous":
+                    options = options with { Anonymous = true };
+                    break;
                 case "--list-branches":
                     options = options with { ListBranches = true };
                     break;
@@ -592,7 +608,7 @@ public static class Program
 
             Game download:
               dotnet run --project SteamKitSDK.TestClient -- --app-id <id> [--depot-id <id>]
-                [--branch <name>] [--directory <path>] [--max-concurrency <count>] [--verify-only] [--yes]
+                [--branch <name>] [--directory <path>] [--max-concurrency <count>] [--verify-only] [--anonymous] [--yes]
 
             Workshop download:
               dotnet run --project SteamKitSDK.TestClient -- --workshop-id <id>
@@ -600,6 +616,9 @@ public static class Program
 
             Inspect branches:
               dotnet run --project SteamKitSDK.TestClient -- --app-id <id> --list-branches
+
+            Anonymous server-content check (no credentials):
+              dotnet run --project SteamKitSDK.TestClient -- --app-id <id> --depot-id <id> --anonymous --verify-only
 
             Without arguments, the client starts an interactive menu. --pause keeps the window open after a command-line test run.
             Ctrl+C cancels a running verification or download safely.
@@ -614,6 +633,7 @@ public static class Program
         string? DownloadDirectory = null,
         int MaxConcurrency = 8,
         bool VerifyOnly = false,
+        bool Anonymous = false,
         bool ListBranches = false,
         bool AssumeYes = false,
         bool ShowHelp = false);

@@ -1,6 +1,6 @@
 # Security Review
 
-Status: October 15, 2026, version 0.9.1.
+Status: October 16, 2026, version 0.9.2.
 
 ## Checks performed
 

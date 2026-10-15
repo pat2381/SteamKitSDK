@@ -2,6 +2,11 @@
 
 All notable changes are documented here.
 
+## 0.9.2 - Anonymous download authorization fix
+
+- Anonymous Steam sessions now validate an application's requested depot through Steam's depot-key response instead of relying on the incomplete anonymous package `17906` list.
+- Anonymous sessions no longer issue free-license requests, preventing a request path that does not produce a Steam callback.
+
 ## 0.9.1 - Package discovery release
 
 - Refined NuGet package descriptions, authorship, project links, release notes, and discovery tags.

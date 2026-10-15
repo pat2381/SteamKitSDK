@@ -6,7 +6,7 @@
     <RootNamespace>SteamKitSDK.Windows</RootNamespace>
     <PackageId>SteamKitSDK.Windows</PackageId>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-    <Version>0.9.1</Version>
+    <Version>0.9.2</Version>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
@@ -18,7 +18,7 @@
     <PackageProjectUrl>https://github.com/pat2381/SteamKitSDK</PackageProjectUrl>
     <PackageTags>steam;steamkit;steamkit2;steam-guard;windows;winforms;wpf;dpapi;dotnet</PackageTags>
     <Description>Windows desktop authentication helpers for SteamKitSDK, with UI-agnostic prompts and DPAPI-protected credential persistence.</Description>
-    <PackageReleaseNotes>0.9.1: Refined package discovery metadata and documentation after the initial public release.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.2: Fixed anonymous download authorization by validating Steam depot keys instead of relying on an incomplete anonymous package list. Anonymous sessions no longer issue free-license requests.</PackageReleaseNotes>
     <Authors>pat2381</Authors>
     <Company>pat2381</Company>
     <Copyright>Copyright (c) Bytex Digital UG (haftungsbeschränkt) and contributors</Copyright>

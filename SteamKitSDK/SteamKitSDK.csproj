@@ -6,7 +6,7 @@
         <PackageId>SteamKitSDK</PackageId>
 
         <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-        <Version>0.9.1</Version>
+        <Version>0.9.2</Version>
         <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
 
         <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
@@ -21,7 +21,7 @@
         <PackageProjectUrl>https://github.com/pat2381/SteamKitSDK</PackageProjectUrl>
         <PackageTags>steam;steamkit;steamkit2;workshop;content-download;depot;steam-guard;dotnet</PackageTags>
         <Description>Modern .NET SDK for authorized Steam application-content and Workshop downloads, Steam Guard authentication, branch queries, progress reporting, and local-file verification, powered by SteamKit2.</Description>
-        <PackageReleaseNotes>0.9.1: Refined package discovery metadata and documentation after the initial public release.</PackageReleaseNotes>
+        <PackageReleaseNotes>0.9.2: Fixed anonymous download authorization by validating Steam depot keys instead of relying on an incomplete anonymous package list. Anonymous sessions no longer issue free-license requests.</PackageReleaseNotes>
         <Company>pat2381</Company>
     </PropertyGroup>
 
