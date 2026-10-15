@@ -1,0 +1,62 @@
+name: Publish NuGet packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-windows:
+    name: Validate Windows package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+      - name: Restore locked dependencies
+        run: dotnet restore SteamKitSDK.sln --locked-mode
+      - name: Build Windows authentication tests
+        run: dotnet build SteamKitSDK.Windows.Tests/SteamKitSDK.Windows.Tests.csproj --configuration Release --no-restore
+      - name: Run Windows authentication tests
+        run: dotnet test SteamKitSDK.Windows.Tests/SteamKitSDK.Windows.Tests.csproj --configuration Release --no-build
+
+  publish:
+    name: Validate and publish packages
+    needs: validate-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+      - name: Restore locked dependencies
+        run: dotnet restore SteamKitSDK.sln --locked-mode
+      - name: Build
+        run: dotnet build SteamKitSDK.sln --configuration Release --no-restore --warnaserror
+      - name: Run cross-platform tests
+        run: dotnet test SteamKitSDK.Tests/SteamKitSDK.Tests.csproj --configuration Release --no-build
+      - name: Pack
+        run: dotnet pack SteamKitSDK.sln --configuration Release --no-build --no-restore --output artifacts
+      - name: Request a short-lived NuGet publishing key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - name: Publish packages to NuGet.org
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source "https://api.nuget.org/v3/index.json"
+          --skip-duplicate

@@ -87,6 +87,7 @@ For scripted use, run `dotnet run --project SteamKitSDK.TestClient -- --help`.
 - [Security review](docs/SECURITY_REVIEW.md) — security model and deployment guidance
 - [Performance and reliability review](docs/PERFORMANCE_AND_RELIABILITY_REVIEW.md) — design and operational considerations
 - [Modernization plan](MODERNIZATION_PLAN.md) — completed upgrade work and remaining release tasks
+- [NuGet publishing guide](docs/NUGET_PUBLISHING.md) — secure, keyless publication through GitHub Actions
 - [Change log](CHANGELOG.md)
 
 ## Development
