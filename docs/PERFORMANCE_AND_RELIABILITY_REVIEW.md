@@ -1,6 +1,6 @@
 # Performance and Reliability Review
 
-Status: October 15, 2026, version 0.9.0.
+Status: October 15, 2026, version 0.9.1.
 
 This review combines static analysis, tests, and an inspection of download, CDN, and authentication paths. It does not include a reproducible live benchmark against Steam because that requires an entitled Steam test account, real depots, and variable external CDN conditions.
 

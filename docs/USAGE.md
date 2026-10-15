@@ -1,11 +1,11 @@
 # SteamKitSDK Usage Guide
 
-This guide covers the APIs in version 0.9.0. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
+This guide covers the APIs in version 0.9.1. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
 
 ## Installation
 
 ```powershell
-dotnet add package SteamKitSDK --version 0.9.0
+dotnet add package SteamKitSDK --version 0.9.1
 ```
 
 The project requires .NET 10. A signed-in Steam account is required to download owned games or Workshop content.
@@ -59,7 +59,7 @@ Environment variables keep the password out of source code and shell history. Pr
 For desktop applications, use the optional `SteamKitSDK.Windows` package. It does not reference WPF or Windows Forms, so it can support either UI framework. `DesktopSteamAuthenticator` connects SDK sign-in to three UI callbacks; `DpapiSteamAuthenticationStore` encrypts access tokens and guard data with Windows DPAPI in the context of the signed-in Windows user.
 
 ```powershell
-dotnet add package SteamKitSDK.Windows --version 0.9.0
+dotnet add package SteamKitSDK.Windows --version 0.9.1
 ```
 
 Dialogs must be displayed on the application's UI thread: use `Dispatcher.InvokeAsync` in WPF and `Control.InvokeAsync` in Windows Forms. The following callbacks represent your own dialogs and must honor that threading requirement:

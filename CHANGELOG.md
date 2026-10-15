@@ -2,13 +2,17 @@
 
 All notable changes are documented here.
 
-## Unreleased
+## 0.9.1 - Package discovery release
 
-- Added `SteamKitSDK.Windows`, an optional Windows desktop companion package with UI-agnostic Steam Guard dialogs and DPAPI-protected access-token and guard-data storage.
+- Refined NuGet package descriptions, authorship, project links, release notes, and discovery tags.
+- Updated installation instructions to point to the published `SteamKitSDK` and `SteamKitSDK.Windows` packages.
+
+## Unreleased
 
 ## 0.9.0 - Modernization release
 
 - Renamed the solution, projects, assembly, package identifier, and public namespaces from `BytexDigital.Steam` to `SteamKitSDK`. Consumers must update their `using` statements and package reference.
+- Added `SteamKitSDK.Windows`, an optional Windows desktop companion package with UI-agnostic Steam Guard dialogs and DPAPI-protected access-token and guard-data storage.
 - Migrated the library and companion applications to .NET 10.
 - Updated SteamKit2 to 3.4.0 and refreshed direct dependencies.
 - Added locked dependency restores, CI package validation, test-result publishing, and code-coverage artifacts.

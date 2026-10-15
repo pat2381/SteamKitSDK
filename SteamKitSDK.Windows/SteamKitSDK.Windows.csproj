@@ -6,7 +6,7 @@
     <RootNamespace>SteamKitSDK.Windows</RootNamespace>
     <PackageId>SteamKitSDK.Windows</PackageId>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-    <Version>0.9.0</Version>
+    <Version>0.9.1</Version>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
@@ -15,9 +15,13 @@
     <PackageIcon>logo_squared_128.png</PackageIcon>
     <RepositoryUrl>https://github.com/pat2381/SteamKitSDK</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/pat2381/SteamKitSDK</PackageProjectUrl>
+    <PackageTags>steam;steamkit;steamkit2;steam-guard;windows;winforms;wpf;dpapi;dotnet</PackageTags>
     <Description>Windows desktop authentication helpers for SteamKitSDK, with UI-agnostic prompts and DPAPI-protected credential persistence.</Description>
-    <Company>Bytex Digital UG (haftungsbeschränkt)</Company>
-    <Copyright>Bytex Digital UG (haftungsbeschränkt)</Copyright>
+    <PackageReleaseNotes>0.9.1: Refined package discovery metadata and documentation after the initial public release.</PackageReleaseNotes>
+    <Authors>pat2381</Authors>
+    <Company>pat2381</Company>
+    <Copyright>Copyright (c) Bytex Digital UG (haftungsbeschränkt) and contributors</Copyright>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

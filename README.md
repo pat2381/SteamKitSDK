@@ -30,10 +30,16 @@ SteamKitSDK does not bypass Steam ownership, licensing, regional, or Workshop ac
 ## Installation
 
 ```powershell
-dotnet add package SteamKitSDK --version 0.9.0
+dotnet add package SteamKitSDK
 ```
 
-The package will be available from NuGet once it has been published. Until then, build it locally with `dotnet pack`.
+For WPF or Windows Forms Steam Guard dialogs and DPAPI-protected authentication state, add the optional Windows companion package:
+
+```powershell
+dotnet add package SteamKitSDK.Windows
+```
+
+See [SteamKitSDK on NuGet](https://www.nuget.org/packages/SteamKitSDK/) and [SteamKitSDK.Windows on NuGet](https://www.nuget.org/packages/SteamKitSDK.Windows/).
 
 ## Quick start
 
@@ -107,7 +113,7 @@ Generated output, IDE files, local test results, credentials, and test-client do
 
 - Target framework: .NET 10
 - SteamKit2: 3.4.0
-- Package status: pre-1.0 (`0.9.0`); public APIs may change before 1.0
+- Package status: pre-1.0 (`0.9.1`); public APIs may change before 1.0
 - Current encrypted V2 depot manifests are supported through Steam's branch-password flow. Legacy V1 encrypted manifest identifiers are intentionally not supported by SteamKit2 3.4.
 
 ## License

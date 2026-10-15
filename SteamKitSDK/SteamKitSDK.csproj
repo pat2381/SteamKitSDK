@@ -6,19 +6,23 @@
         <PackageId>SteamKitSDK</PackageId>
 
         <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-        <Version>0.9.0</Version>
+        <Version>0.9.1</Version>
         <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
 
         <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
-        <Copyright>Bytex Digital UG (haftungsbeschränkt)</Copyright>
+        <Authors>pat2381</Authors>
+        <Copyright>Copyright (c) Bytex Digital UG (haftungsbeschränkt) and contributors</Copyright>
         <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
         <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>logo_squared_128.png</PackageIcon>
         <RepositoryUrl>https://github.com/pat2381/SteamKitSDK</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <Description>Wrapper library for SteamKit2 for (incomplete) easier access to certain APIs.</Description>
-        <Company>Bytex Digital UG (haftungsbeschränkt)</Company>
+        <PackageProjectUrl>https://github.com/pat2381/SteamKitSDK</PackageProjectUrl>
+        <PackageTags>steam;steamkit;steamkit2;workshop;content-download;depot;steam-guard;dotnet</PackageTags>
+        <Description>Modern .NET SDK for authorized Steam application-content and Workshop downloads, Steam Guard authentication, branch queries, progress reporting, and local-file verification, powered by SteamKit2.</Description>
+        <PackageReleaseNotes>0.9.1: Refined package discovery metadata and documentation after the initial public release.</PackageReleaseNotes>
+        <Company>pat2381</Company>
     </PropertyGroup>
 
     <ItemGroup>
