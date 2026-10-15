@@ -1,8 +1,10 @@
 ﻿namespace BytexDigital.Steam.ContentDelivery.Models
 {
+#nullable enable
+
     public class SteamContentServerQuality
     {
-        public string Host { get; set; }
+        public string Host { get; set; } = string.Empty;
         public double Score { get; set; }
     }
 }

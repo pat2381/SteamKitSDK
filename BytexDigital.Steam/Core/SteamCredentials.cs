@@ -2,6 +2,8 @@
 
 namespace BytexDigital.Steam.Core
 {
+#nullable enable
+
     public class SteamCredentials
     {
         private const string ANONYMOUS_USERNAME = "";
@@ -9,12 +11,22 @@ namespace BytexDigital.Steam.Core
 
         public string Username { get; }
         public string Password { get; }
-        public string WebApiKey { get; }
+        public string? WebApiKey { get; }
 
         public bool IsAnonymous => Username == ANONYMOUS_USERNAME;
 
-        public SteamCredentials(string username, string password, string webApiKey = null)
+        public SteamCredentials(string username, string password, string? webApiKey = null)
         {
+            if (username is null)
+            {
+                throw new ArgumentException($"\"{nameof(username)}\" may not be NULL or empty.", nameof(username));
+            }
+
+            if (password is null)
+            {
+                throw new ArgumentException($"\"{nameof(password)}\" may not be NULL or empty.", nameof(password));
+            }
+
             if (username != ANONYMOUS_USERNAME)
             {
                 if (string.IsNullOrEmpty(username))

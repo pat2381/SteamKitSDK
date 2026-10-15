@@ -3,6 +3,8 @@ using BytexDigital.Steam.Core.Structs;
 
 namespace BytexDigital.Steam.ContentDelivery.Exceptions
 {
+#nullable enable
+
     public class SteamInvalidBranchPasswordException : Exception
     {
         public SteamInvalidBranchPasswordException(
@@ -10,7 +12,7 @@ namespace BytexDigital.Steam.ContentDelivery.Exceptions
             DepotId depotId,
             string branch,
             string password,
-            Exception innerException = null) : base("Invalid password = " +
+            Exception? innerException = null) : base("Invalid password = " +
                                                     $"'{password}' for branch = {branch} of app id = {appId}, depot id = {depotId}{(innerException != null ? ". View the inner exception for more details." : "")}",
             innerException)
         {

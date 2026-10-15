@@ -6,6 +6,8 @@ using Newtonsoft.Json;
 
 namespace BytexDigital.Steam.ContentDelivery
 {
+#nullable enable
+
     public abstract class SteamContentServerQualityProvider
     {
         public abstract IList<SteamContentServerQuality> Load();
@@ -31,7 +33,8 @@ namespace BytexDigital.Steam.ContentDelivery
         {
             try
             {
-                return JsonConvert.DeserializeObject<List<SteamContentServerQuality>>(File.ReadAllText(FileName));
+                return JsonConvert.DeserializeObject<List<SteamContentServerQuality>>(File.ReadAllText(FileName))
+                       ?? new List<SteamContentServerQuality>();
             }
             catch
             {

@@ -3,9 +3,11 @@ using System.Threading.Tasks;
 
 namespace BytexDigital.Steam.ContentDelivery.Models.Downloading
 {
+#nullable enable
+
     public abstract class FileTarget : IAsyncDisposable
     {
-        public static FileTarget None = null;
+        public static FileTarget? None = null;
 
         public double Progress => (double) WrittenBytes / (TotalBytes > 0 ? TotalBytes : 1);
         public ulong TotalBytes { get; internal set; }
