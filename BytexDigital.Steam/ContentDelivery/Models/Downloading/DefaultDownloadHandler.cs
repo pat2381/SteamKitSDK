@@ -155,12 +155,12 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
             {
                 Logger?.LogTrace("No files to download");
 
-                if (DownloadComplete != null)
-                {
-                    // Wait for all file verified eventhandlers to finish so we don't send events out of order
-                    await WaitForEventHandlersAsync(cancellationToken);
+                State = DownloadHandlerStateEnum.Verified;
 
-                    RunEventHandler(() => DownloadComplete!.Invoke(this, EventArgs.Empty));
+                if (VerificationCompleted != null)
+                {
+                    await WaitForEventHandlersAsync(cancellationToken);
+                    RunEventHandler(() => VerificationCompleted!.Invoke(this, new VerificationCompletedArgs([])));
                 }
 
                 return;

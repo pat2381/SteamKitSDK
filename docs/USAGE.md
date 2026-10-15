@@ -235,3 +235,48 @@ var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 - Verwende einen eigenen, pro App/Account getrennten Download-Ordner.
 - Verwahre Passwörter, Refresh-Token und Guard-Daten in einem Secret Store. Keine Klartext-Dateien, Repository-Commits oder Kommandozeilenargumente verwenden.
 - Prüfe vor Releases die in diesem Repository dokumentierten Tests und den Sicherheitsbericht.
+
+## Integrierter Test-Client
+
+Das Projekt `BytexDigital.Steam.TestClient` ist ein kleiner Konsolenclient für reale, kontrollierte Smoke-Tests. Er verwendet keine Zugangsdaten aus Argumenten und speichert keine Token. Steam Guard und die Mobile-Bestätigung werden interaktiv über `ConsoleSteamAuthenticator` abgefragt.
+
+Vor dem Start müssen die Zugangsdaten nur für den aktuellen Prozess als Umgebungsvariablen verfügbar sein:
+
+```powershell
+$env:STEAM_USERNAME = "dein-steam-name"
+$env:STEAM_PASSWORD = "dein-passwort"
+```
+
+Ein sicherer Testablauf für ein Spiel ist:
+
+```powershell
+# 1. Verfügbare Branches prüfen.
+dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --list-branches
+
+# 2. Manifest und vorhandene Dateien prüfen, ohne einen Download zu starten.
+dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --verify-only
+
+# 3. Download nach expliziter Bestätigung starten.
+dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 `
+  --directory .\downloads\tf2 --max-concurrency 8
+```
+
+`--yes` überspringt die interaktive Bestätigung und ist deshalb nur für bewusst automatisierte Testläufe gedacht. `Ctrl+C` bricht Verifikation oder Download ab. Für einen passwortgeschützten Branch wird das Passwort ebenfalls nicht als Argument übergeben:
+
+```powershell
+$env:STEAM_BRANCH_PASSWORD = "branch-passwort"
+dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --branch beta --verify-only
+```
+
+Ein einzelnes Depot lässt sich mit `--depot-id` begrenzen. Workshop-Elemente werden über ihre PublishedFileId getestet:
+
+```powershell
+dotnet run --project BytexDigital.Steam.TestClient -- --workshop-id 3417789720 `
+  --directory .\downloads\workshop-test
+```
+
+Nach dem Test sollten die Umgebungsvariablen aus der aktuellen Shell entfernt werden:
+
+```powershell
+Remove-Item Env:STEAM_USERNAME, Env:STEAM_PASSWORD, Env:STEAM_WEB_API_KEY, Env:STEAM_BRANCH_PASSWORD -ErrorAction SilentlyContinue
+```
