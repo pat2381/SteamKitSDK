@@ -13,6 +13,8 @@ using SteamKit = SteamKit2;
 
 namespace BytexDigital.Steam.Core
 {
+#nullable enable
+
     public class SteamClient : IDisposable
     {
         public enum SteamClientState
@@ -27,7 +29,7 @@ namespace BytexDigital.Steam.Core
         private readonly AsyncManualResetEvent _clientReadyEvent = new AsyncManualResetEvent(false);
         private readonly AsyncSemaphore _clientReconnectSemaphore = new AsyncSemaphore(1);
         internal readonly SteamKit.SteamApps _steamAppsHandler;
-        private readonly SteamAuthenticator _steamAuthenticator;
+        private readonly SteamAuthenticator? _steamAuthenticator;
         internal readonly SteamKit.SteamContent _steamContentHandler;
         internal readonly SteamKit.SteamUser _steamUserHandler;
         internal AsyncManualResetEvent _licensesReceived = new AsyncManualResetEvent(false);
@@ -48,7 +50,7 @@ namespace BytexDigital.Steam.Core
         ///     Server that the client will be forced to connect to.
         ///     <para>If unavailable, the client will attempt reconnecting until a shutdown is forced.</para>
         /// </summary>
-        public ServerRecord ForcedServer { get; set; }
+        public ServerRecord? ForcedServer { get; set; }
 
         public CancellationToken CancellationToken => _cancellationTokenSource.Token;
 
@@ -70,12 +72,13 @@ namespace BytexDigital.Steam.Core
         public int MaximumLogonAttempts { get; set; } = 1;
         public int MaximumCmServerAttempts { get; set; } = 15;
         public uint ActiveCellId { get; private set; }
-        public Exception FaultException { get; private set; }
+        public Exception? FaultException { get; private set; }
 
         internal SteamKit.CallbackManager CallbackManager { get; set; }
-        internal IList<SteamKit.SteamApps.LicenseListCallback.License> Licenses { get; set; }
+        internal IList<SteamKit.SteamApps.LicenseListCallback.License> Licenses { get; set; } =
+            new List<SteamKit.SteamApps.LicenseListCallback.License>();
 
-        public SteamClient(SteamCredentials credentials = default) : this(
+        public SteamClient(SteamCredentials? credentials = null) : this(
             credentials,
             default,
             default)
@@ -83,26 +86,22 @@ namespace BytexDigital.Steam.Core
         }
 
         public SteamClient(
-            SteamCredentials credentials = default,
-            SteamAuthenticator steamAuthenticator = default) : this(
-            credentials,
-            steamAuthenticator,
-            default)
-        {
-        }
-
-        public SteamClient(
-            SteamCredentials credentials = default,
-            SteamAuthenticator steamAuthenticator = default,
-            Action<SteamKit.ISteamConfigurationBuilder> steamConfigurationBuilder = default,
-            IRegionSpecificServerListProvider serverListProvider = default)
+            SteamCredentials? credentials,
+            SteamAuthenticator? steamAuthenticator,
+            Action<SteamKit.ISteamConfigurationBuilder>? steamConfigurationBuilder = null,
+            IRegionSpecificServerListProvider? serverListProvider = null)
         {
             // Default values
             credentials ??= SteamCredentials.Anonymous;
             steamConfigurationBuilder ??= builder => { };
 
             Credentials = credentials;
-            _steamAuthenticator = steamAuthenticator ?? throw new SteamAuthenticatorRequiredException();
+            _steamAuthenticator = steamAuthenticator;
+
+            if (!Credentials.IsAnonymous && _steamAuthenticator is null)
+            {
+                throw new SteamAuthenticatorRequiredException();
+            }
 
             // If the caller has provided a region specific server list,
             // make sure we also use it in our SteamConfiguration object.
@@ -132,9 +131,12 @@ namespace BytexDigital.Steam.Core
             _cancellationTokenSource = new CancellationTokenSource();
             CallbackManager = new SteamKit.CallbackManager(InternalClient);
 
-            _steamUserHandler = InternalClient.GetHandler<SteamKit.SteamUser>();
-            _steamAppsHandler = InternalClient.GetHandler<SteamKit.SteamApps>();
-            _steamContentHandler = InternalClient.GetHandler<SteamKit.SteamContent>();
+            _steamUserHandler = InternalClient.GetHandler<SteamKit.SteamUser>()
+                ?? throw new InvalidOperationException("SteamKit did not provide a SteamUser handler.");
+            _steamAppsHandler = InternalClient.GetHandler<SteamKit.SteamApps>()
+                ?? throw new InvalidOperationException("SteamKit did not provide a SteamApps handler.");
+            _steamContentHandler = InternalClient.GetHandler<SteamKit.SteamContent>()
+                ?? throw new InvalidOperationException("SteamKit did not provide a SteamContent handler.");
 
             CallbackManager.Subscribe<SteamKit.SteamClient.ConnectedCallback>(OnConnected);
             CallbackManager.Subscribe<SteamKit.SteamClient.DisconnectedCallback>(OnDisconnected);
@@ -160,13 +162,13 @@ namespace BytexDigital.Steam.Core
         /// <summary>
         ///     Event handler that fires upon exception that are produced by user code.
         /// </summary>
-        public event EventHandler<Exception> OnUnhandledException;
+        public event EventHandler<Exception>? OnUnhandledException;
 
-        public event Action InternalClientAttemptingConnect;
-        public event Action InternalClientConnected;
-        public event Action InternalClientDisconnected;
-        public event Action InternalClientLoggedOn;
-        public event Action InternalClientLoggedOff;
+        public event Action? InternalClientAttemptingConnect;
+        public event Action? InternalClientConnected;
+        public event Action? InternalClientDisconnected;
+        public event Action? InternalClientLoggedOn;
+        public event Action? InternalClientLoggedOff;
 
         public void Shutdown()
         {
@@ -194,7 +196,7 @@ namespace BytexDigital.Steam.Core
 
             var task = await Task.WhenAny(readyTask, faultedTask);
 
-            if (task == faultedTask) throw new SteamClientFaultedException(FaultException);
+            if (task == faultedTask) throw new SteamClientFaultedException(FaultException ?? new SteamClientDisposedException());
 
             // If we are an anonymous user, the callback about owned licenses will not fire.
             if (!Credentials.IsAnonymous)
@@ -224,7 +226,7 @@ namespace BytexDigital.Steam.Core
 
             var task = await Task.WhenAny(readyTask, faultedTask);
 
-            if (task == faultedTask) throw new SteamClientFaultedException(FaultException);
+            if (task == faultedTask) throw new SteamClientFaultedException(FaultException ?? new SteamClientDisposedException());
 
             if (!readyTask.IsCompletedSuccessfully) throw new SteamClientNotReadyException();
         }
@@ -241,12 +243,12 @@ namespace BytexDigital.Steam.Core
                         
                         try
                         {
-                            accessToken =
-                                await _steamAuthenticator.GetAccessTokenAsync(_cancellationTokenSource.Token);
+                            var authenticator = _steamAuthenticator ?? throw new SteamAuthenticatorRequiredException();
+                            accessToken = await authenticator.GetAccessTokenAsync(_cancellationTokenSource.Token) ?? string.Empty;
 
                             if (string.IsNullOrEmpty(accessToken))
                             {
-                                var guardData = await _steamAuthenticator.GetGuardDataAsync(
+                                var guardData = await authenticator.GetGuardDataAsync(
                                     _cancellationTokenSource
                                         .Token);
 
@@ -258,7 +260,7 @@ namespace BytexDigital.Steam.Core
                                             Username = Credentials.Username,
                                             Password = Credentials.Password,
                                             IsPersistentSession = false,
-                                            Authenticator = new SteamAuthenticatorAdapter(_steamAuthenticator),
+                                            Authenticator = new SteamAuthenticatorAdapter(authenticator),
                                             GuardData = string.IsNullOrEmpty(guardData) ? null : guardData
                                         })
                                     .WaitAsync(_cancellationTokenSource.Token);
@@ -267,12 +269,12 @@ namespace BytexDigital.Steam.Core
 
                                 accessToken = pollResponse.RefreshToken;
 
-                                await _steamAuthenticator.PersistAccessTokenAsync(accessToken,
+                                await authenticator.PersistAccessTokenAsync(accessToken,
                                     _cancellationTokenSource.Token);
 
                                 if (!string.IsNullOrEmpty(pollResponse.NewGuardData))
                                 {
-                                    await _steamAuthenticator.PersistGuardDataAsync(pollResponse.NewGuardData,
+                                    await authenticator.PersistGuardDataAsync(pollResponse.NewGuardData,
                                         _cancellationTokenSource.Token);
                                 }
                             }

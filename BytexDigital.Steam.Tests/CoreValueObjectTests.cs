@@ -1,6 +1,7 @@
 using System;
 using BytexDigital.Steam.Core;
 using BytexDigital.Steam.Core.Enumerations;
+using BytexDigital.Steam.Core.Exceptions;
 using BytexDigital.Steam.Core.Structs;
 using Xunit;
 
@@ -48,5 +49,21 @@ public sealed class CoreValueObjectTests
         Assert.Equal("steamdeck", steamOs.Identifier);
         Assert.Equal("steamdeck", steamOs.ToString());
         Assert.Throws<ArgumentNullException>(() => new SteamOs(null!));
+    }
+
+    [Fact]
+    public void SteamClient_DefaultConstructor_CreatesAnonymousClient()
+    {
+        using var client = new SteamClient();
+
+        Assert.True(client.Credentials.IsAnonymous);
+    }
+
+    [Fact]
+    public void SteamClient_NonAnonymousCredentialsRequireAuthenticator()
+    {
+        var credentials = new SteamCredentials("username", "password");
+
+        Assert.Throws<SteamAuthenticatorRequiredException>(() => new SteamClient(credentials));
     }
 }
