@@ -61,13 +61,17 @@ public static class Program
 
         Console.WriteLine("Connected");
 
-        var depots = await steamContentClient.GetDepotsAsync(107410, "legacy");
+        // var depots = await steamContentClient.GetDepotsAsync(107410, "legacy");
+        //
+        // var test = await steamContentClient.GetPublishedFilesForAppIdRawAsync(107410);
+        //
+        // var handler = await steamContentClient.GetAppDataAsync(107410,
+        //     "legacy",
+        //     "Arma3Legacy216",
+        //     true,
+        //     x => depots.Any(d => d.Id == x.Id));
 
-        var handler = await steamContentClient.GetAppDataAsync(107410,
-            "legacy",
-            "Arma3Legacy216",
-            true,
-            x => depots.Any(d => d.Id == x.Id));
+        var handler = await steamContentClient.GetPublishedFileDataAsync(3417789720);
         
         try
         {
@@ -86,6 +90,19 @@ public static class Program
             downloadHandler.DownloadComplete += (sender, args) => Console.WriteLine("Download completed");
 
             await downloadHandler.SetupAsync(@".\download", file => true);
+
+            var duplicates = downloadHandler.Files.GroupBy(x => x.FileName).Where(x => x.Count() > 1).ToList();
+
+            if (downloadHandler is MultiDepotDownloadHandler multiDepotDownloadHandler)
+            {
+                var a = multiDepotDownloadHandler.GetActualHandlers();
+            }
+            
+            foreach (var duplicate in duplicates)
+            {
+                Console.WriteLine($"Duplicate: {duplicate.Key} found {duplicate.Count()} files");
+            }
+            
             await downloadHandler.VerifyAsync();
             await downloadHandler.DownloadAsync();
         }
