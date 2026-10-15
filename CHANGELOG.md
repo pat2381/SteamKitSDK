@@ -2,6 +2,10 @@
 
 All notable changes are documented here.
 
+## 0.9.3 - Package metadata correction
+
+- Corrected the NuGet copyright metadata to identify `pat2381` as the current package maintainer.
+
 ## 0.9.2 - Anonymous download authorization fix
 
 - Anonymous Steam sessions now validate an application's requested depot through Steam's depot-key response instead of relying on the incomplete anonymous package `17906` list.
