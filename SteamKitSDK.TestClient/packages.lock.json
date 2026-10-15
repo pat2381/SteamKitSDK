@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "G2GrGWNAPZBsii2F6AU8n+JT2tC1/I0Ml/e9ZyNCgPjf3hZqronP7o0X91aAynCmVeae8KkSIUNXXeXCNRmdVQ=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "aSZEhEig4fvNiw2zs8Z6NyDlniKtq6YjcF3DyHuqTEHcZ2VKA/6itMPZ+dW+yWABWExlDcQwwdbqX1Rcb7W8WQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.13"
+        }
+      },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.4",
+        "contentHash": "pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A=="
+      },
+      "Nito.AsyncEx": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "hq+N63M/2znx2z1VzvPDHNg+HIWKdIloEZre+P7E0O+2iRf1Q4HBOgeiJU6SzFD/fWoyKyKSSSrekk4RgiXaeQ==",
+        "dependencies": {
+          "Nito.AsyncEx.Context": "5.1.2",
+          "Nito.AsyncEx.Coordination": "5.1.2",
+          "Nito.AsyncEx.Interop.WaitHandles": "5.1.2",
+          "Nito.AsyncEx.Oop": "5.1.2",
+          "Nito.AsyncEx.Tasks": "5.1.2",
+          "Nito.Cancellation": "1.1.2"
+        }
+      },
+      "Nito.AsyncEx.Context": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "rMwL7Nj3oNyvFu/jxUzQ/YBobEkM2RQHe+5mpCDRyq6mfD7vCj7Z3rjB6XgpM6Mqcx1CA2xGv0ascU/2Xk8IIg==",
+        "dependencies": {
+          "Nito.AsyncEx.Tasks": "5.1.2"
+        }
+      },
+      "Nito.AsyncEx.Coordination": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "QMyUfsaxov//0ZMbOHWr9hJaBFteZd66DV1ay4J5wRODDb8+K/uHC7+3VsOflo6SVw/29mu8OWZp8vMDSuzc0w==",
+        "dependencies": {
+          "Nito.AsyncEx.Tasks": "5.1.2",
+          "Nito.Collections.Deque": "1.1.1"
+        }
+      },
+      "Nito.AsyncEx.Interop.WaitHandles": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "qym29lFBCSIacKvFcJDW+beXzuO+6y9lWdd1KecxzzAqtNuvlYgNPwIsxwdhEINLhTT4aDuCM3JalpUZYWI51Q==",
+        "dependencies": {
+          "Nito.AsyncEx.Tasks": "5.1.2"
+        }
+      },
+      "Nito.AsyncEx.Oop": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "MxQl/NFoPgMApyjbB2fSZBrjdf9r6ODd/BTrWLyJKYX6UeNfw0Ocr0cPiTg2LRN0Ayud8Gj4dh67AdasNn709Q==",
+        "dependencies": {
+          "Nito.AsyncEx.Coordination": "5.1.2"
+        }
+      },
+      "Nito.AsyncEx.Tasks": {
+        "type": "Transitive",
+        "resolved": "5.1.2",
+        "contentHash": "jEkCfR2/M26OK/U4G7SEN063EU/F4LiVA06TtpZILMdX/quIHCg+wn31Zerl2LC+u1cyFancjTY3cNAr2/89PA==",
+        "dependencies": {
+          "Nito.Disposables": "2.2.1"
+        }
+      },
+      "Nito.Cancellation": {
+        "type": "Transitive",
+        "resolved": "1.1.2",
+        "contentHash": "Z+SZKp0KxMC6tEVbXe8ah4pBJadyqP0pObQMaZcBavhIDEIsGuxt7PL+B9AiNJD3Ni5VgnZsnii5HPJgVDE81w==",
+        "dependencies": {
+          "Nito.Disposables": "2.2.1"
+        }
+      },
+      "Nito.Collections.Deque": {
+        "type": "Transitive",
+        "resolved": "1.1.1",
+        "contentHash": "CU0/Iuv5VDynK8I8pDLwkgF0rZhbQoZahtodfL0M3x2gFkpBRApKs8RyMyNlAi1mwExE4gsmqQXk4aFVvW9a4Q=="
+      },
+      "Nito.Disposables": {
+        "type": "Transitive",
+        "resolved": "2.2.1",
+        "contentHash": "6sZ5uynQeAE9dPWBQGKebNmxbY4xsvcc5VplB5WkYEESUS7oy4AwnFp0FhqxTSKm/PaFrFqLrYr696CYN8cugg=="
+      },
+      "protobuf-net": {
+        "type": "Transitive",
+        "resolved": "3.2.56",
+        "contentHash": "4IPJeTYAMNewlN8MDaFkcmR/9hLhJeo9eARnTh104zh7mf+vXT2gu5MUfUnkSQU+CH578Q6vcdU7LQDQPG6eaw==",
+        "dependencies": {
+          "protobuf-net.Core": "3.2.56"
+        }
+      },
+      "protobuf-net.Core": {
+        "type": "Transitive",
+        "resolved": "3.2.56",
+        "contentHash": "d6QOukTpDzs7zZv9tPnBZMtvHDNeHJQXUhMx54g4urUQsXK3oo9U70H9HvklYq7hlQ4A7AHJl7EVEqyCXXIl8Q=="
+      },
+      "SteamKit2": {
+        "type": "Transitive",
+        "resolved": "3.4.0",
+        "contentHash": "3UZ5Useeh+5BJ19gazEpeFc3wRasMEUkrdkgzIhwAAK9VXL9sPbQu11bp6E3W7HsPCbm2s262yuyBbYLzA+4AA==",
+        "dependencies": {
+          "System.IO.Hashing": "10.0.1",
+          "ZstdSharp.Port": "0.8.7",
+          "protobuf-net": "3.2.56"
+        }
+      },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.1",
+        "contentHash": "Dy6ULPb2S0GmNndjKrEIpfibNsc8+FTOoZnqygtFDuyun8vWboQbfMpQtKUXpgTxokR5E4zFHETpNnGfeWY6NA=="
+      },
+      "ZstdSharp.Port": {
+        "type": "Transitive",
+        "resolved": "0.8.7",
+        "contentHash": "+4VpxvzEKaHpfTjsLRMhQHx6brqGBkIA+fjUM3wUW8ZoWpPFAeKrO2Nf4uZDeBjjzNDNxSRvLQH4b3S9Ku4JJQ=="
+      },
+      "steamkitsdk": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.13, )",
+          "Newtonsoft.Json": "[13.0.4, )",
+          "Nito.AsyncEx": "[5.1.2, )",
+          "SteamKit2": "[3.4.0, )"
+        }
+      }
+    }
+  }
+}

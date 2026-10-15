@@ -4,6 +4,7 @@ All notable changes are documented here.
 
 ## 0.9.0 - Modernization release
 
+- Renamed the solution, projects, assembly, package identifier, and public namespaces from `BytexDigital.Steam` to `SteamKitSDK`. Consumers must update their `using` statements and package reference.
 - Migrated the library and companion applications to .NET 10.
 - Updated SteamKit2 to 3.4.0 and refreshed direct dependencies.
 - Added locked dependency restores, CI package validation, test-result publishing, and code-coverage artifacts.

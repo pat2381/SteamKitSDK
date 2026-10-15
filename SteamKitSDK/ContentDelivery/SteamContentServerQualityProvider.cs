@@ -1,0 +1,57 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using SteamKitSDK.ContentDelivery.Models;
+using Newtonsoft.Json;
+
+namespace SteamKitSDK.ContentDelivery
+{
+#nullable enable
+
+    public abstract class SteamContentServerQualityProvider
+    {
+        public abstract IList<SteamContentServerQuality> Load();
+
+        public abstract void Save(IList<SteamContentServerQuality> servers);
+    }
+
+    public class SteamContentServerQualityNoMemoryProvider : SteamContentServerQualityProvider
+    {
+        public override IList<SteamContentServerQuality> Load() => new List<SteamContentServerQuality>();
+
+        public override void Save(IList<SteamContentServerQuality> servers)
+        {
+        }
+    }
+
+    public class SteamContentServerQualityFileProvider : SteamContentServerQualityProvider
+    {
+        public string FileName { get; }
+        public SteamContentServerQualityFileProvider(string fileName) => FileName = fileName;
+
+        public override IList<SteamContentServerQuality> Load()
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<List<SteamContentServerQuality>>(File.ReadAllText(FileName))
+                       ?? new List<SteamContentServerQuality>();
+            }
+            catch
+            {
+                return new List<SteamContentServerQuality>();
+            }
+        }
+
+        public override void Save(IList<SteamContentServerQuality> servers)
+        {
+            try
+            {
+                File.WriteAllText(FileName,
+                    JsonConvert.SerializeObject(servers.OrderBy(x => x.Score), Formatting.Indented));
+            }
+            catch
+            {
+            }
+        }
+    }
+}

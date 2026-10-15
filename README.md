@@ -1,9 +1,11 @@
-![Nuget](https://img.shields.io/nuget/vpre/BytexDigital.Steam.svg?style=flat-square)
+![Nuget](https://img.shields.io/nuget/vpre/SteamKitSDK.svg?style=flat-square)
 
-# BytexDigital.Steam
+# SteamKitSDK
 
 This library is a wrapper for the popular SteamKit2 library. It's primary goal is to simplify specific APIs of it to
 make them easier to use.
+
+> Migration note: the project was renamed from `BytexDigital.Steam` to `SteamKitSDK`. Update package references and `using BytexDigital.Steam...` statements to `SteamKitSDK...`.
 
 As of now, this library's main purpose is to allow for simple content downloading (apps and workshop items) off Steam.
 
@@ -39,11 +41,11 @@ dotnet test --configuration Release --no-build
 
 ## Download
 
-[nuget package](https://www.nuget.org/packages/BytexDigital.Steam/)
+[nuget package](https://www.nuget.org/packages/SteamKitSDK/)
 
 ### Simple item download usage example
 
-See the [test client project](https://github.com/BytexDigital/BytexDigital.Steam/tree/master/BytexDigital.Steam.TestClient)
+See the [test client project](https://github.com/BytexDigital/BytexDigital.Steam/tree/master/SteamKitSDK.TestClient)
 
 #### Filter which files to download
 

@@ -1,11 +1,11 @@
-# BytexDigital.Steam: Nutzungsanleitung
+# SteamKitSDK: Nutzungsanleitung
 
 Diese Anleitung beschreibt die APIs von Version 0.9.0. Das SDK greift auf Steam über SteamKit2 zu. Es darf nur für Inhalte eingesetzt werden, für die das verwendete Steam-Konto eine Berechtigung besitzt.
 
 ## Installation
 
 ```powershell
-dotnet add package BytexDigital.Steam --version 0.9.0
+dotnet add package SteamKitSDK --version 0.9.0
 ```
 
 Das Projekt benötigt .NET 10. Für Downloads von besitzpflichtigen Spielen oder Workshop-Inhalten ist ein angemeldetes Steam-Konto erforderlich.
@@ -29,7 +29,7 @@ Jeder Download folgt immer derselben Reihenfolge:
 `ConsoleSteamAuthenticator` ist für eine lokale, interaktive Anwendung gedacht. Er fragt bei Bedarf nach einem E-Mail- oder Steam-Guard-Code und nach der Bestätigung in der Steam-Mobile-App.
 
 ```csharp
-using BytexDigital.Steam.Core;
+using SteamKitSDK.Core;
 
 var username = Environment.GetEnvironmentVariable("STEAM_USERNAME")
     ?? throw new InvalidOperationException("STEAM_USERNAME is not set.");
@@ -59,10 +59,10 @@ Die Umgebungsvariablen verhindern, dass das Passwort in Quellcode oder Shell-His
 Das folgende Beispiel lädt alle erreichbaren Depots der öffentlichen Branch einer App. `appId` muss durch die Steam-App-ID des gewünschten Spiels ersetzt werden. Ein Steam-Konto kann nur Depots laden, für die es eine Lizenz besitzt.
 
 ```csharp
-using BytexDigital.Steam.ContentDelivery;
-using BytexDigital.Steam.ContentDelivery.Exceptions;
-using BytexDigital.Steam.ContentDelivery.Models.Downloading;
-using BytexDigital.Steam.Core;
+using SteamKitSDK.ContentDelivery;
+using SteamKitSDK.ContentDelivery.Exceptions;
+using SteamKitSDK.ContentDelivery.Models.Downloading;
+using SteamKitSDK.Core;
 
 const uint appId = 440; // Beispiel: Team Fortress 2
 var downloadDirectory = Path.Combine(AppContext.BaseDirectory, "downloads", appId.ToString());
@@ -156,7 +156,7 @@ Aktuelle V2-Manifeste werden unterstützt. Alte V1-verschlüsselte Manifest-IDs 
 Ein Workshop-Element wird über seine `PublishedFileId` geladen. Die Methode ermittelt Metadaten, Lizenz-/Zugriffsstatus und bei Steam-CDN-Inhalten das passende Manifest selbst.
 
 ```csharp
-using BytexDigital.Steam.ContentDelivery.Models.Downloading;
+using SteamKitSDK.ContentDelivery.Models.Downloading;
 
 const ulong workshopItemId = 3417789720; // Beispiel-ID; durch eigene PublishedFileId ersetzen
 var workshopDirectory = Path.Combine(AppContext.BaseDirectory, "downloads", "workshop", workshopItemId.ToString());
@@ -214,7 +214,7 @@ finally
 }
 ```
 
-Die wichtigen Ausnahmegruppen befinden sich in `BytexDigital.Steam.Core.Exceptions` und `BytexDigital.Steam.ContentDelivery.Exceptions`. Anwendungen sollten erwartete Zugriffs-, Lizenz-, Branch- und Downloadfehler gezielt behandeln und niemals Zugangsdaten, Branch-Passwörter oder Access-Token protokollieren.
+Die wichtigen Ausnahmegruppen befinden sich in `SteamKitSDK.Core.Exceptions` und `SteamKitSDK.ContentDelivery.Exceptions`. Anwendungen sollten erwartete Zugriffs-, Lizenz-, Branch- und Downloadfehler gezielt behandeln und niemals Zugangsdaten, Branch-Passwörter oder Access-Token protokollieren.
 
 ## Anonyme Nutzung
 
@@ -238,7 +238,7 @@ var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 
 ## Integrierter Test-Client
 
-Das Projekt `BytexDigital.Steam.TestClient` ist ein kleiner Konsolenclient für reale, kontrollierte Smoke-Tests. Er verwendet keine Zugangsdaten aus Argumenten und speichert keine Token. Steam Guard und die Mobile-Bestätigung werden interaktiv über `ConsoleSteamAuthenticator` abgefragt.
+Das Projekt `SteamKitSDK.TestClient` ist ein kleiner Konsolenclient für reale, kontrollierte Smoke-Tests. Er verwendet keine Zugangsdaten aus Argumenten und speichert keine Token. Steam Guard und die Mobile-Bestätigung werden interaktiv über `ConsoleSteamAuthenticator` abgefragt.
 
 Im interaktiven Menü fragt der Client nach Steam-Benutzername und Passwort, falls die nachstehenden Umgebungsvariablen nicht gesetzt sind. Das Passwort wird maskiert eingegeben und weder gespeichert noch ausgegeben.
 
@@ -253,13 +253,13 @@ Ein sicherer Testablauf für ein Spiel ist:
 
 ```powershell
 # 1. Verfügbare Branches prüfen.
-dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --list-branches
+dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --list-branches
 
 # 2. Manifest und vorhandene Dateien prüfen, ohne einen Download zu starten.
-dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --verify-only
+dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --verify-only
 
 # 3. Download nach expliziter Bestätigung starten.
-dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 `
+dotnet run --project SteamKitSDK.TestClient -- --app-id 440 `
   --directory .\downloads\tf2 --max-concurrency 8 --pause
 ```
 
@@ -267,17 +267,17 @@ dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 `
 
 Beim Doppelklick ohne Argumente startet der Client ein interaktives Menü für Spiel-, Workshop- und Branch-Tests. Mit `--pause` bleibt die Konsole auch nach einem ausgeführten Kommandozeilentest geöffnet.
 
-Im Menü fragt der Client nach der App- beziehungsweise Workshop-ID und anschließend ausdrücklich nach dem Installationsordner. Ein leerer Wert verwendet den sichtbaren Standardpfad unter `%LOCALAPPDATA%\BytexDigital.Steam\downloads`; ein eigener absoluter oder relativer Pfad ist möglich. Umschließende Anführungszeichen werden automatisch entfernt.
+Im Menü fragt der Client nach der App- beziehungsweise Workshop-ID und anschließend ausdrücklich nach dem Installationsordner. Ein leerer Wert verwendet den sichtbaren Standardpfad unter `%LOCALAPPDATA%\SteamKitSDK\downloads`; ein eigener absoluter oder relativer Pfad ist möglich. Umschließende Anführungszeichen werden automatisch entfernt.
 
 ```powershell
 $env:STEAM_BRANCH_PASSWORD = "branch-passwort"
-dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --branch beta --verify-only
+dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --branch beta --verify-only
 ```
 
 Ein einzelnes Depot lässt sich mit `--depot-id` begrenzen. Workshop-Elemente werden über ihre PublishedFileId getestet:
 
 ```powershell
-dotnet run --project BytexDigital.Steam.TestClient -- --workshop-id 3417789720 `
+dotnet run --project SteamKitSDK.TestClient -- --workshop-id 3417789720 `
   --directory .\downloads\workshop-test
 ```
 

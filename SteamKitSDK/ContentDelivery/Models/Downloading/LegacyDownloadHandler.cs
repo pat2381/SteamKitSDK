@@ -1,0 +1,184 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using SteamKitSDK.ContentDelivery.Enumerations;
+using SteamKitSDK.ContentDelivery.Exceptions;
+
+namespace SteamKitSDK.ContentDelivery.Models.Downloading;
+
+#nullable enable
+
+public class LegacyDownloadHandler : IDownloadHandler
+{
+    private static readonly HttpClient HttpClient = new();
+
+    public string FileUrl { get; }
+    public string FileName { get; }
+    public string DownloadDirectory { get; protected set; } = string.Empty;
+    public Func<ManifestFile, bool> FileCondition { get; protected set; } = _ => true;
+    public DownloadHandlerStateEnum State { get; protected set; }
+    public IReadOnlyList<ManifestFile> Files { get; protected set; } = Array.Empty<ManifestFile>();
+
+    public LegacyDownloadHandler(string fileUrl, string fileName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        FileUrl = fileUrl;
+        FileName = fileName;
+        State = DownloadHandlerStateEnum.Created;
+    }
+
+    public double TotalProgress { get; private set; }
+    public int TotalFileCount => 1;
+    public ulong TotalFileSize { get; private set; }
+
+    public event EventHandler<ManifestFile>? FileDownloaded;
+    public event EventHandler<FileVerifiedArgs>? FileVerified;
+    public event EventHandler<VerificationCompletedArgs>? VerificationCompleted;
+    public event EventHandler<EventArgs>? DownloadComplete;
+
+    public Task SetupAsync(
+        string directory,
+        Func<ManifestFile, bool> condition,
+        CancellationToken cancellationToken = default)
+    {
+        // Allow setup when not setup yet or already setup, but no state past it
+        if (State != DownloadHandlerStateEnum.Created && State != DownloadHandlerStateEnum.SetUp &&
+            State != DownloadHandlerStateEnum.Verified)
+        {
+            throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Created, State);
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentNullException.ThrowIfNull(condition);
+
+        _ = DownloadPathResolver.ResolveFilePath(directory, FileName);
+
+        DownloadDirectory = directory;
+        FileCondition = condition;
+
+        Files = new List<ManifestFile>
+        {
+            new(
+                FileName,
+                new List<ManifestFileChunkHeader>(),
+                default,
+                TotalFileSize,
+                new byte[0])
+        };
+
+        State = DownloadHandlerStateEnum.Verified;
+
+        return Task.CompletedTask;
+    }
+
+    public Task VerifyAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public async Task DownloadAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (State != DownloadHandlerStateEnum.Verified)
+            {
+                throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Verified, State);
+            }
+
+            State = DownloadHandlerStateEnum.Downloading;
+
+            Directory.CreateDirectory(DownloadDirectory);
+
+            using var response = await HttpClient.GetAsync(
+                FileUrl,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            TotalFileSize = (ulong) (response.Content.Headers.ContentLength ?? 0);
+
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var destination = new FileStream(
+                DownloadPathResolver.ResolveFilePath(DownloadDirectory, FileName),
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+
+            var buffer = new byte[81920];
+            long downloadedBytes = 0;
+            int bytesRead;
+
+            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) != 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                downloadedBytes += bytesRead;
+                TotalProgress = TotalFileSize == 0 ? 0 : (double) downloadedBytes / (double) TotalFileSize;
+            }
+
+            TotalFileSize = TotalFileSize == 0 ? (ulong) downloadedBytes : TotalFileSize;
+            TotalProgress = 1;
+
+            State = DownloadHandlerStateEnum.Downloaded;
+
+            OnFileDownloaded();
+
+            if (DownloadComplete != null)
+            {
+                _ = Task.Run(() => DownloadComplete.Invoke(this, new EventArgs()));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            State = DownloadHandlerStateEnum.SetUp;
+            throw;
+        }
+        catch
+        {
+            // In this handler, it's not a total failure if an exception is raised here, so the handler can be reused.
+            State = DownloadHandlerStateEnum.SetUp;
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return new ValueTask(Task.CompletedTask);
+    }
+
+    public void Dispose()
+    {
+        DisposeAsync().GetAwaiter().GetResult();
+    }
+
+    private void OnFileDownloaded()
+    {
+        if (FileDownloaded != null)
+        {
+            _ = Task.Run(
+                () => FileDownloaded.Invoke(
+                    this,
+                    new ManifestFile(
+                        FileName,
+                        new List<ManifestFileChunkHeader>(),
+                        default,
+                        TotalFileSize,
+                        new byte[0])));
+        }
+    }
+
+    private void OnFileVerified(FileVerifiedArgs eventArgs)
+    {
+        FileVerified?.Invoke(this, eventArgs);
+    }
+
+    private void OnVerificationCompleted(VerificationCompletedArgs eventArgs)
+    {
+        VerificationCompleted?.Invoke(this, eventArgs);
+    }
+}

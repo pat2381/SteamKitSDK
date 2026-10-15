@@ -1,0 +1,13 @@
+using System;
+
+namespace SteamKitSDK.Core.Exceptions
+{
+    public class SteamClientFaultedException : Exception
+    {
+        public SteamClientFaultedException(Exception faultException) : base(
+            $"Client is faulted and cannot be used{(faultException != null ? ": " : ".")}{faultException?.Message}",
+            faultException)
+        {
+        }
+    }
+}

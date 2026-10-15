@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
       - name: Pack
-        run: dotnet pack BytexDigital.Steam/BytexDigital.Steam.csproj --configuration Release --no-build --no-restore --output artifacts
+        run: dotnet pack SteamKitSDK/SteamKitSDK.csproj --configuration Release --no-build --no-restore --output artifacts
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
