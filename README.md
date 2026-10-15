@@ -23,6 +23,11 @@ dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build
 ```
 
+## Documentation
+
+- [Usage guide with game, workshop, and Steam Guard examples](docs/USAGE.md)
+- [Security review and operational guidance](docs/SECURITY_REVIEW.md)
+
 ## Compatibility notes
 
 - The package now targets .NET 10 and uses SteamKit2 3.4.0.

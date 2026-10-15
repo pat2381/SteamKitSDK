@@ -12,23 +12,23 @@ namespace BytexDigital.Steam.TestClient;
 
 public static class Program
 {
-    private static async Task Main(string[] args)
+    private static async Task Main()
     {
-        if (args.Length < 2)
+        var username = Environment.GetEnvironmentVariable("STEAM_USERNAME");
+        var password = Environment.GetEnvironmentVariable("STEAM_PASSWORD");
+        var webApiKey = Environment.GetEnvironmentVariable("STEAM_WEB_API_KEY");
+
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            Console.WriteLine("Expected two arguments: username password");
+            Console.WriteLine("Set STEAM_USERNAME and STEAM_PASSWORD before starting the test client.");
             return;
         }
 
-        var steamCredentials = SteamCredentials.Anonymous;
-
-        steamCredentials = args.Length == 2
-            ? new SteamCredentials(args[0], args[1])
-            : new SteamCredentials(args[0], args[1], args[2]);
+        var steamCredentials = new SteamCredentials(username, password, webApiKey);
 
         var steamClient = new SteamClient(
             steamCredentials,
-            new ConsoleSteamAuthenticator(steamCredentials.Username, ".\\auth"));
+            new ConsoleSteamAuthenticator(steamCredentials.Username));
 
         // steamClient.ForcedServer = ServerRecord.CreateServer(
         //     "cm4-cu-sha1.cm.wmsjsteam.com", 27022,

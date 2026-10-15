@@ -325,7 +325,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
     private Task VerifyFileAsync(ManifestFile file, string directory, ConcurrentBag<ChunkJob> chunks)
     {
-        var filePath = Path.Combine(directory, file.FileName);
+        var filePath = DownloadPathResolver.ResolveFilePath(directory, file.FileName);
         var fileDirectory = Path.GetDirectoryName(filePath);
 
         Directory.CreateDirectory(fileDirectory);

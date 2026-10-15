@@ -10,6 +10,8 @@ All notable changes are documented here.
 - Improved download cancellation, file-target lifecycle handling, and null-safety checks in core client paths.
 - Added unit and loopback integration coverage for value objects, download handling, cancellation, and file targets.
 - Retired the unsupported V1 encrypted depot-manifest decryptor. SteamKit2 3.4 no longer exposes the required helper; V2/current branch-password handling remains supported.
+- Hardened download paths against traversal and removed branch passwords from exception messages.
+- Changed the test client to read credentials from environment variables and disabled its plaintext token persistence by default.
 
 ## Upgrade notes
 

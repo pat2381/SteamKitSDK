@@ -28,6 +28,15 @@ public sealed class LegacyDownloadHandlerTests
     }
 
     [Fact]
+    public async Task SetupAsync_RejectsFileNameOutsideDownloadDirectory()
+    {
+        using var handler = new LegacyDownloadHandler("https://example.invalid/content", "..\\outside.bin");
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => handler.SetupAsync(Path.GetTempPath(), _ => true));
+    }
+
+    [Fact]
     public async Task DownloadAsync_DownloadsContentAndRaisesFileDownloaded()
     {
         const string fileName = "content.bin";

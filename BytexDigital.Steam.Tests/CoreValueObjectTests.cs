@@ -5,6 +5,7 @@ using BytexDigital.Steam.Core.Enumerations;
 using BytexDigital.Steam.Core.Exceptions;
 using BytexDigital.Steam.Core.Structs;
 using BytexDigital.Steam.ContentDelivery;
+using BytexDigital.Steam.ContentDelivery.Exceptions;
 using BytexDigital.Steam.ContentDelivery.Models;
 using Xunit;
 
@@ -104,5 +105,15 @@ public sealed class CoreValueObjectTests
 
         await Assert.ThrowsAsync<NotSupportedException>(
             () => contentClient.DecryptDepotManifestAsync(legacyManifest, "password"));
+    }
+
+    [Fact]
+    public void InvalidBranchPasswordException_DoesNotExposePassword()
+    {
+        const string password = "this-must-not-be-logged";
+
+        var exception = new SteamInvalidBranchPasswordException(480, 480, "beta", password);
+
+        Assert.DoesNotContain(password, exception.Message);
     }
 }

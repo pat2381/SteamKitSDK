@@ -17,6 +17,11 @@ BytexDigital.Steam.Clients.CLI/Properties/launchSettings.json
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
+# Steam authentication material; never commit refresh tokens or guard data.
+auth/
+**/*_accesstoken
+**/*_guarddata
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/

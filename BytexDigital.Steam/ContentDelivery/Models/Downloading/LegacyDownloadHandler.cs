@@ -56,6 +56,8 @@ public class LegacyDownloadHandler : IDownloadHandler
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentNullException.ThrowIfNull(condition);
 
+        _ = DownloadPathResolver.ResolveFilePath(directory, FileName);
+
         DownloadDirectory = directory;
         FileCondition = condition;
 
@@ -102,7 +104,7 @@ public class LegacyDownloadHandler : IDownloadHandler
 
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var destination = new FileStream(
-                Path.Combine(DownloadDirectory, FileName),
+                DownloadPathResolver.ResolveFilePath(DownloadDirectory, FileName),
                 FileMode.Create,
                 FileAccess.Write,
                 FileShare.None,

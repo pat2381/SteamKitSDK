@@ -12,10 +12,11 @@ namespace BytexDigital.Steam.ContentDelivery.Exceptions
             DepotId depotId,
             string branch,
             string password,
-            Exception? innerException = null) : base("Invalid password = " +
-                                                    $"'{password}' for branch = {branch} of app id = {appId}, depot id = {depotId}{(innerException != null ? ". View the inner exception for more details." : "")}",
+            Exception? innerException = null) : base("Invalid password for branch = " +
+                                                    $"{branch} of app id = {appId}, depot id = {depotId}{(innerException != null ? ". View the inner exception for more details." : "")}",
             innerException)
         {
+            _ = password;
         }
     }
 }
