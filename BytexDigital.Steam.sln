@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BytexDigital.Steam", "Bytex
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BytexDigital.Steam.TestClient", "BytexDigital.Steam.TestClient\BytexDigital.Steam.TestClient.csproj", "{FD7A5358-9D26-48B5-A6A5-55D9D023B03E}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BytexDigital.Steam.Tests", "BytexDigital.Steam.Tests\BytexDigital.Steam.Tests.csproj", "{A0D82F7C-C81F-4DD7-A3B8-BD2B426598C0}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "GitHub", "GitHub", "{DA1D79D2-24E9-4FEC-8191-713FC5A1349F}"
 	ProjectSection(SolutionItems) = preProject
 		LICENSE.md = LICENSE.md
@@ -27,6 +29,10 @@ Global
 		{FD7A5358-9D26-48B5-A6A5-55D9D023B03E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FD7A5358-9D26-48B5-A6A5-55D9D023B03E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FD7A5358-9D26-48B5-A6A5-55D9D023B03E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A0D82F7C-C81F-4DD7-A3B8-BD2B426598C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A0D82F7C-C81F-4DD7-A3B8-BD2B426598C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A0D82F7C-C81F-4DD7-A3B8-BD2B426598C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A0D82F7C-C81F-4DD7-A3B8-BD2B426598C0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
