@@ -24,7 +24,7 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
       - name: Test
-        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
       - name: Pack
         run: dotnet pack BytexDigital.Steam/BytexDigital.Steam.csproj --configuration Release --no-build --no-restore --output artifacts
       - name: Upload test results
@@ -33,6 +33,13 @@ jobs:
         with:
           name: test-results
           path: '**/TestResults/*.trx'
+          if-no-files-found: error
+      - name: Upload code coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage
+          path: '**/TestResults/**/coverage.cobertura.xml'
           if-no-files-found: error
       - name: Upload package
         uses: actions/upload-artifact@v4

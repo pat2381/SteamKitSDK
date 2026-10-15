@@ -23,6 +23,12 @@ dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build
 ```
 
+## Compatibility notes
+
+- The package now targets .NET 10 and uses SteamKit2 3.4.0.
+- Current encrypted depot manifests (V2) use Steam's branch-password API. Legacy V1 encrypted manifest identifiers are intentionally rejected because the required SteamKit helper no longer exists in SteamKit2 3.4; applications should resolve protected branches through the current branch-password flow instead.
+- This is a pre-1.0 release. Version 0.9.0 contains framework and dependency updates and therefore requires consumers to test their integration before upgrading.
+
 > :warning: **Please note that this library is in early beta. APIs may change heavily between versions.**
 
 ## Download

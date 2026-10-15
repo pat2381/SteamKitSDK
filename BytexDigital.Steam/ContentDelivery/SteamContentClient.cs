@@ -59,19 +59,27 @@ public class SteamContentClient : IAsyncDisposable
 
     public SteamContentClient(SteamClient steamClient, int maxConcurrentDownloadsPerTask = 10)
     {
+        ArgumentNullException.ThrowIfNull(steamClient);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxConcurrentDownloadsPerTask, 1);
+
         SteamClient = steamClient;
-        SteamUnifiedMessagesService = SteamClient.InternalClient.GetHandler<SteamKit.SteamUnifiedMessages>();
+        SteamUnifiedMessagesService = SteamClient.InternalClient.GetHandler<SteamKit.SteamUnifiedMessages>()
+            ?? throw new InvalidOperationException("SteamKit did not provide a SteamUnifiedMessages handler.");
         PublishedFileService = SteamUnifiedMessagesService.CreateService<PublishedFile>();
         // CdnAuthenticationTokens = new ConcurrentDictionary<string, SteamKit.SteamApps.CDNAuthTokenCallback>();
         MaxConcurrentDownloadsPerTask = maxConcurrentDownloadsPerTask;
-        SteamApps = SteamClient.InternalClient.GetHandler<SteamKit.SteamApps>();
-        SteamUser = SteamClient.InternalClient.GetHandler<SteamKit.SteamUser>();
+        SteamApps = SteamClient.InternalClient.GetHandler<SteamKit.SteamApps>()
+            ?? throw new InvalidOperationException("SteamKit did not provide a SteamApps handler.");
+        SteamUser = SteamClient.InternalClient.GetHandler<SteamKit.SteamUser>()
+            ?? throw new InvalidOperationException("SteamKit did not provide a SteamUser handler.");
 
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(SteamClient.CancellationToken);
     }
 
     public ValueTask DisposeAsync()
     {
+        _cancellationTokenSource.Cancel();
+
         foreach (var pool in _serverPools)
         {
             try
@@ -83,6 +91,8 @@ public class SteamContentClient : IAsyncDisposable
                 // ignore
             }
         }
+
+        _cancellationTokenSource.Dispose();
 
         return default;
     }
@@ -724,22 +734,9 @@ public class SteamContentClient : IAsyncDisposable
     {
         if (manifest.Version == DepotEncryptedManifest.EncryptionVersion.V1)
         {
-            //  var manifestCryptoInput = DecodeHexString(manifest.EncryptedManifestId);
-            //  var manifestIdBytes =
-            //      SteamKit.CryptoHelper.VerifyAndDecryptPassword(manifestCryptoInput, branchPassword);
-            //
-            //  if (manifestIdBytes == null)
-            //  {
-            //      throw new SteamInvalidBranchPasswordException(
-            //          manifest.AppId,
-            //          manifest.DepotId,
-            //          manifest.BranchName,
-            //          branchPassword);
-            //  }
-            //
-            // return new DepotManifest(manifest.BranchName, BitConverter.ToUInt64(manifestIdBytes));
-
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "V1 encrypted depot manifests are no longer supported by SteamKit2 3.4. " +
+                "Use the current Steam branch-password flow to resolve the depot manifest.");
         }
         else
         {
@@ -787,8 +784,6 @@ public class SteamContentClient : IAsyncDisposable
                     ex);
             }
         }
-
-        throw new NotImplementedException();
     }
 
     public async Task<ManifestId> GetDepotManifestIdAsync(
