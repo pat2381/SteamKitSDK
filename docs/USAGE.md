@@ -240,6 +240,8 @@ var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 
 Das Projekt `BytexDigital.Steam.TestClient` ist ein kleiner Konsolenclient für reale, kontrollierte Smoke-Tests. Er verwendet keine Zugangsdaten aus Argumenten und speichert keine Token. Steam Guard und die Mobile-Bestätigung werden interaktiv über `ConsoleSteamAuthenticator` abgefragt.
 
+Im interaktiven Menü fragt der Client nach Steam-Benutzername und Passwort, falls die nachstehenden Umgebungsvariablen nicht gesetzt sind. Das Passwort wird maskiert eingegeben und weder gespeichert noch ausgegeben.
+
 Vor dem Start müssen die Zugangsdaten nur für den aktuellen Prozess als Umgebungsvariablen verfügbar sein:
 
 ```powershell

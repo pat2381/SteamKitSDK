@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BytexDigital.Steam.ContentDelivery;
@@ -186,6 +187,70 @@ public static class Program
               || string.Equals(value, "y", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string? ReadCredential(string environmentVariable, string label, bool secret)
+    {
+        var value = Environment.GetEnvironmentVariable(environmentVariable);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        if (Console.IsInputRedirected)
+        {
+            return null;
+        }
+
+        while (true)
+        {
+            Console.Write($"{label}: ");
+            value = secret ? ReadPassword() : Console.ReadLine();
+
+            if (!secret)
+            {
+                Console.WriteLine();
+            }
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            Console.WriteLine("Dieser Wert ist erforderlich.");
+        }
+    }
+
+    private static string ReadPassword()
+    {
+        var password = new StringBuilder();
+
+        while (true)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.Key == ConsoleKey.Enter)
+            {
+                Console.WriteLine();
+                return password.ToString();
+            }
+
+            if (key.Key == ConsoleKey.Backspace)
+            {
+                if (password.Length > 0)
+                {
+                    password.Length--;
+                    Console.Write("\b \b");
+                }
+
+                continue;
+            }
+
+            if (!char.IsControl(key.KeyChar))
+            {
+                password.Append(key.KeyChar);
+                Console.Write('*');
+            }
+        }
+    }
+
     private static async Task<int> RunAsync(string[] args)
     {
         if (!TryParseOptions(args, out var options, out var error))
@@ -201,13 +266,13 @@ public static class Program
             return 0;
         }
 
-        var username = Environment.GetEnvironmentVariable("STEAM_USERNAME");
-        var password = Environment.GetEnvironmentVariable("STEAM_PASSWORD");
+        var username = ReadCredential("STEAM_USERNAME", "Steam-Benutzername", secret: false);
+        var password = ReadCredential("STEAM_PASSWORD", "Steam-Passwort", secret: true);
         var webApiKey = Environment.GetEnvironmentVariable("STEAM_WEB_API_KEY");
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            Console.Error.WriteLine("Set STEAM_USERNAME and STEAM_PASSWORD before starting the test client.");
+            Console.Error.WriteLine("Steam-Benutzername und Steam-Passwort sind erforderlich.");
             return 64;
         }
 
@@ -518,8 +583,9 @@ public static class Program
         Console.WriteLine("""
             BytexDigital.Steam Test Client
 
-            Required environment variables:
-              STEAM_USERNAME, STEAM_PASSWORD
+            Credentials:
+              The interactive menu asks for username and password when they are not set below.
+              STEAM_USERNAME, STEAM_PASSWORD can be used for command-line automation.
 
             Optional environment variables:
               STEAM_WEB_API_KEY, STEAM_BRANCH_PASSWORD
