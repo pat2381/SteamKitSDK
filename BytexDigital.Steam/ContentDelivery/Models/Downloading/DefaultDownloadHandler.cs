@@ -338,7 +338,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                 if ((ulong) fs.Length == file.TotalSize)
                 {
                     using var bs = new BufferedStream(fs);
-                    using var sha1 = new SHA1Managed();
+                    using var sha1 = SHA1.Create();
 
                     // If both files are identical, dont download the file
                     if (sha1.ComputeHash(bs).SequenceEqual(file.FileHash))

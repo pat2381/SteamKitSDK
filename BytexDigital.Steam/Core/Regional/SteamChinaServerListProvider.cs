@@ -21,7 +21,7 @@ namespace BytexDigital.Steam.Core.Regional
             }
 
             var directory = SteamConfiguration.GetAsyncWebAPIInterface("ISteamDirectory");
-            var args = new Dictionary<string, object?>
+            var args = new Dictionary<string, object>
             {
                 ["cellid"] = SteamConfiguration.CellID.ToString(CultureInfo.InvariantCulture),
                 ["launcher"] = "7",

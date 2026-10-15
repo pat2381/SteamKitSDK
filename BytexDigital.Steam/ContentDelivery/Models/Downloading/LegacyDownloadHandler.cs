@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
-using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using BytexDigital.Steam.ContentDelivery.Enumerations;
@@ -12,6 +11,8 @@ namespace BytexDigital.Steam.ContentDelivery.Models.Downloading;
 
 public class LegacyDownloadHandler : IDownloadHandler
 {
+    private static readonly HttpClient HttpClient = new();
+
     public string FileUrl { get; }
     public string FileName { get; }
     public string DownloadDirectory { get; protected set; }
@@ -81,16 +82,42 @@ public class LegacyDownloadHandler : IDownloadHandler
 
             State = DownloadHandlerStateEnum.Downloading;
 
-            var webClient = new WebClient();
-
             Directory.CreateDirectory(DownloadDirectory);
 
-            webClient.DownloadProgressChanged += WebClient_DownloadProgressChanged;
-            webClient.DownloadFileCompleted += WebClient_DownloadFileCompleted;
+            using var response = await HttpClient.GetAsync(
+                FileUrl,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            response.EnsureSuccessStatusCode();
 
-            await webClient.DownloadFileTaskAsync(new Uri(FileUrl), Path.Combine(DownloadDirectory, FileName));
+            TotalFileSize = (ulong) (response.Content.Headers.ContentLength ?? 0);
+
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var destination = new FileStream(
+                Path.Combine(DownloadDirectory, FileName),
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+
+            var buffer = new byte[81920];
+            long downloadedBytes = 0;
+            int bytesRead;
+
+            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) != 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                downloadedBytes += bytesRead;
+                TotalProgress = TotalFileSize == 0 ? 0 : (double) downloadedBytes / (double) TotalFileSize;
+            }
+
+            TotalFileSize = TotalFileSize == 0 ? (ulong) downloadedBytes : TotalFileSize;
+            TotalProgress = 1;
 
             State = DownloadHandlerStateEnum.Downloaded;
+
+            OnFileDownloaded();
 
             if (DownloadComplete != null)
             {
@@ -114,11 +141,8 @@ public class LegacyDownloadHandler : IDownloadHandler
         DisposeAsync().GetAwaiter().GetResult();
     }
 
-    private void WebClient_DownloadFileCompleted(object sender, AsyncCompletedEventArgs e)
+    private void OnFileDownloaded()
     {
-        TotalProgress = 1;
-        State = DownloadHandlerStateEnum.Downloaded;
-
         if (FileDownloaded != null)
         {
             _ = Task.Run(
@@ -133,9 +157,13 @@ public class LegacyDownloadHandler : IDownloadHandler
         }
     }
 
-    private void WebClient_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
+    private void OnFileVerified(FileVerifiedArgs eventArgs)
     {
-        TotalFileSize = (ulong) e.TotalBytesToReceive;
-        TotalProgress = (double) e.ProgressPercentage / 100;
+        FileVerified?.Invoke(this, eventArgs);
+    }
+
+    private void OnVerificationCompleted(VerificationCompletedArgs eventArgs)
+    {
+        VerificationCompleted?.Invoke(this, eventArgs);
     }
 }

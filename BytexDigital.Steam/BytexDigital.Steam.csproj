@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
 
         <VersionSuffix>$(VersionSuffix)</VersionSuffix>
         <Version>0.8.7</Version>
