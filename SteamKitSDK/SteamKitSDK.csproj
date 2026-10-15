@@ -15,7 +15,7 @@
         <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>logo_squared_128.png</PackageIcon>
-        <RepositoryUrl>https://github.com/BytexDigital/BytexDigital.Steam</RepositoryUrl>
+        <RepositoryUrl>https://github.com/pat2381/SteamKitSDK</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <Description>Wrapper library for SteamKit2 for (incomplete) easier access to certain APIs.</Description>
         <Company>Bytex Digital UG (haftungsbeschränkt)</Company>

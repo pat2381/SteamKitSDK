@@ -1,4 +1,4 @@
-[![Build and test](https://github.com/BytexDigital/BytexDigital.Steam/actions/workflows/ci.yml/badge.svg)](https://github.com/BytexDigital/BytexDigital.Steam/actions/workflows/ci.yml)
+[![Build and test](https://github.com/pat2381/SteamKitSDK/actions/workflows/ci.yml/badge.svg)](https://github.com/pat2381/SteamKitSDK/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/SteamKitSDK.svg?style=flat-square)](https://www.nuget.org/packages/SteamKitSDK/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg?style=flat-square)](LICENSE.md)
 
