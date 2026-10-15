@@ -10,6 +10,7 @@
         <Copyright>Bytex Digital UG (haftungsbeschränkt)</Copyright>
         <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
         <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>logo_squared_128.png</PackageIcon>
         <RepositoryUrl>https://github.com/BytexDigital/BytexDigital.Steam</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
@@ -26,6 +27,10 @@
 
     <ItemGroup>
         <None Include="..\LICENSE.md">
+            <Pack>True</Pack>
+            <PackagePath></PackagePath>
+        </None>
+        <None Include="..\README.md">
             <Pack>True</Pack>
             <PackagePath></PackagePath>
         </None>
