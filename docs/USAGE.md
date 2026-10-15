@@ -267,7 +267,7 @@ dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 `
 
 Beim Doppelklick ohne Argumente startet der Client ein interaktives Menü für Spiel-, Workshop- und Branch-Tests. Mit `--pause` bleibt die Konsole auch nach einem ausgeführten Kommandozeilentest geöffnet.
 
-Im Menü fragt der Client nach der App- beziehungsweise Workshop-ID und anschließend ausdrücklich nach dem Installationsordner. Ein leerer Wert verwendet den sichtbaren Standardpfad unter `%LOCALAPPDATA%\BytexDigital.Steam\downloads`; ein eigener absoluter oder relativer Pfad ist möglich.
+Im Menü fragt der Client nach der App- beziehungsweise Workshop-ID und anschließend ausdrücklich nach dem Installationsordner. Ein leerer Wert verwendet den sichtbaren Standardpfad unter `%LOCALAPPDATA%\BytexDigital.Steam\downloads`; ein eigener absoluter oder relativer Pfad ist möglich. Umschließende Anführungszeichen werden automatisch entfernt.
 
 ```powershell
 $env:STEAM_BRANCH_PASSWORD = "branch-passwort"

@@ -150,7 +150,7 @@ public static class Program
         while (true)
         {
             Console.Write($"Installationsordner [{defaultDirectory}]: ");
-            var input = Console.ReadLine()?.Trim();
+            var input = Console.ReadLine()?.Trim().Trim('"');
             var selectedDirectory = string.IsNullOrWhiteSpace(input) ? defaultDirectory : input;
 
             try
@@ -159,7 +159,7 @@ public static class Program
             }
             catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                Console.WriteLine("Der angegebene Installationsordner ist ungültig.");
+                Console.WriteLine("Der angegebene Installationsordner ist ungültig. Gib den Pfad ohne Anführungszeichen ein.");
             }
         }
     }
