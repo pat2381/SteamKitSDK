@@ -1,36 +1,35 @@
-# Modernisierungsplan
+# Modernization Plan
 
-## 1. Abhängigkeiten und Plattform
+## 1. Dependencies and platform
 
-- [x] SteamKit2 auf 3.4.0 aktualisieren und die Upstream-Anpassungen übernehmen.
-- [x] Verwundbare Paketversionen ersetzen und Paket-Lockdateien einführen.
-- [x] Auf .NET 10 LTS migrieren und das SDK zentral festlegen.
+- [x] Update SteamKit2 to 3.4.0 and adopt the required upstream changes.
+- [x] Replace vulnerable package versions and introduce package lock files.
+- [x] Migrate to .NET 10 and define the SDK centrally.
 
-## 2. Zuverlässigkeit und API-Verträge
+## 2. Reliability and API contracts
 
-- [x] Veraltete Netzwerk-, Kryptografie- und Serialisierungs-APIs ersetzen.
-- [x] Null-Sicherheit für Wertobjekte, `SteamClient`, CDN-Pool und Dateiziele einführen.
-- [x] Die priorisierten SteamKit-Adapter (`SteamContentClient`, Downloadhandler) methodenweise nullable-sicher machen.
-- [x] Nicht implementierte Legacy-Manifeste bewerten und eindeutig als nicht unterstützt dokumentieren, wenn eine sichere aktuelle Implementierung nicht möglich ist.
+- [x] Replace outdated networking, cryptography, and serialization APIs.
+- [x] Introduce null-safety for value objects, `SteamClient`, the CDN pool, and file targets.
+- [x] Make the prioritized SteamKit adapters (`SteamContentClient`, download handlers) nullable-safe method by method.
+- [x] Assess unimplemented legacy manifests and document them explicitly as unsupported when a secure current implementation is not possible.
 
-## 3. Qualitätssicherung
+## 3. Quality assurance
 
-- [x] Reale Unit- und Integrations-Tests einführen.
-- [x] Testabdeckung für SteamContentClient-Fehlerpfade, Downloads und Abbruchfälle erweitern.
-- [x] CI um Paketvalidierung und Code-Coverage-Ausgabe ergänzen.
+- [x] Introduce meaningful unit and integration tests.
+- [x] Extend test coverage for `SteamContentClient` failure paths, downloads, and cancellation cases.
+- [x] Add package validation and code-coverage artifacts to CI.
 
-## 4. Paket und Dokumentation
+## 4. Package and documentation
 
-- [x] NuGet-README in das Paket aufnehmen.
-- [x] README auf .NET 10, die unterstützten Downloadwege und die aktuellen Grenzen aktualisieren.
-- [x] Paketversion 0.9.0 und Release-Notes für die Breaking Changes der Modernisierung festlegen.
+- [x] Include the NuGet README in the package.
+- [x] Update the README for .NET 10, supported download paths, and current limitations.
+- [x] Define package version 0.9.0 and release notes for modernization breaking changes.
+- [x] Add the optional `SteamKitSDK.Windows` package for Windows desktop authentication.
 
-## 5. Abschluss
+## 5. Completion
 
-- [x] Wiederherstellung im Locked Mode, Release-Build, Tests, Vulnerability-Scan und NuGet-Paket validieren.
+- [x] Validate locked restore, Release build, tests, vulnerability scan, and NuGet packages.
 
-## Validierungsstand
+## Validation status
 
-Am 15. Oktober 2026 erfolgreich geprüft: Locked Restore, Release-Build ohne Warnungen,
-15 Tests inklusive Coverage-Erzeugung, NuGet-Paketbau und Vulnerability-Scan ohne bekannte
-Schwachstellen.
+Successfully validated on October 15, 2026: locked restore, warning-free Release build, test suite with coverage generation, NuGet package build, and vulnerability scan with no known vulnerabilities.

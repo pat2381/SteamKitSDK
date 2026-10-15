@@ -1,47 +1,47 @@
-# Performance- und Zuverlässigkeitsreview
+# Performance and Reliability Review
 
-Stand: 15. Oktober 2026, Version 0.9.0.
+Status: October 15, 2026, version 0.9.0.
 
-Dieses Review kombiniert statische Analyse, Tests und eine Prüfung der Download-, CDN- und Authentifizierungspfade. Ein reproduzierbarer Live-Benchmark gegen Steam ist nicht enthalten, weil er ein berechtigtes Steam-Testkonto, reale Depots und variable externe CDN-Bedingungen benötigt.
+This review combines static analysis, tests, and an inspection of download, CDN, and authentication paths. It does not include a reproducible live benchmark against Steam because that requires an entitled Steam test account, real depots, and variable external CDN conditions.
 
-## Umgesetzte Verbesserungen
+## Implemented improvements
 
-| Bereich | Befund | Umsetzung | Wirkung |
+| Area | Finding | Implementation | Result |
 | --- | --- | --- | --- |
-| Zustandsmodell | `MultiDepotDownloadHandler` blieb nach erfolgreichem Download nicht im Zustand `Downloaded`. | Erfolgszustand gesetzt, Fehler führen zu `Failed` und werden weitergereicht. | Aufrufer können Fortschritt und Fehler korrekt behandeln. |
-| Fehlerbehandlung | Verify- und Downloadfehler wurden an mehreren Stellen verschluckt. | Fehler werden nach der Zustandsaktualisierung wieder geworfen. | Keine scheinbar erfolgreichen, aber unvollständigen Downloads. |
-| Chunk-Retries | Netzwerk- und Dateischreibfehler konnten unendlich wiederholt werden. | Maximal fünf Chunk-Versuche; Schreibfehler werden mit Kontext weitergegeben. | Keine Endlosschleifen, besser diagnosierbare Ausfälle. |
-| Logging | Retry-Informationen waren nicht sichtbar; eine Logmeldung formatierte Zeichenketten vorzeitig. | Strukturierte Warnung je fehlgeschlagenem Chunk-Versuch und strukturierte Chunk-Anzahl. | Abfragen nach Depot und Versuch sind in strukturierten Logsystemen möglich. |
-| Speicher | Für jeden Chunk wurde zusätzlich eine vollständige Delegate-Liste erzeugt; die Parallelroutine kopierte sie nochmals in ein Array. | Die Parallelisierung verarbeitet das `IEnumerable` gestreamt und hält nur maximal `maxConcurrentDownloadsPerTask` aktive Aufgaben. | Weniger temporäre Allokationen bei großen Spielen. |
-| CDN-Abbruch | Wartende Entnahmen aus dem CDN-Pool reagierten nicht auf dessen interne Erschöpfung. | Aufrufer- und Pool-Abbruchtoken werden verknüpft. | Wartende Downloads können korrekt abbrechen statt unbestimmt zu blockieren. |
-| Workshop-Kataloge | Die Rohabfrage sammelte ohne Grenze alle Seiten im Speicher. | Neue Überladung mit `maximumResults`, Cursor-Schutz und Abbruchprüfung. | Aufrufer können den Speicherverbrauch begrenzen. |
-| Depot-Auswahl | Eine leere gefilterte Depotliste wurde nicht erkannt. | Prüfung auf `Count == 0`. | Sofortige, eindeutige Fehlermeldung statt eines leeren Handlers. |
+| State model | `MultiDepotDownloadHandler` did not remain in the `Downloaded` state after a successful download. | The success state is set; errors set `Failed` and are propagated. | Callers can correctly handle progress and failures. |
+| Error handling | Verification and download errors were swallowed in several locations. | Errors are rethrown after the state update. | No apparently successful but incomplete downloads. |
+| Chunk retries | Network and file-write errors could retry indefinitely. | A maximum of five attempts per chunk; write errors include context. | No infinite loops and more diagnosable failures. |
+| Logging | Retry information was invisible, and one log entry formatted strings too early. | A structured warning is emitted for each failed chunk attempt, with structured chunk count. | Queries by depot and attempt work in structured logging systems. |
+| Memory | Every chunk created an extra complete delegate list, then the parallel routine copied it into an array again. | Parallel processing streams the `IEnumerable` and keeps at most `maxConcurrentDownloadsPerTask` tasks active. | Fewer temporary allocations for large games. |
+| CDN cancellation | Waiting dequeues from the CDN pool did not react to its internal exhaustion. | Caller and pool cancellation tokens are linked. | Waiting downloads cancel correctly instead of blocking indefinitely. |
+| Workshop catalogs | The raw query collected all pages in memory without a limit. | A new overload adds `maximumResults`, cursor protection, and cancellation checks. | Callers can bound memory consumption. |
+| Depot selection | An empty filtered depot list was not detected. | A `Count == 0` check was added. | Immediate, clear error rather than an empty handler. |
 
-## Logging und Fehlerbehandlung
+## Logging and error handling
 
-`DefaultDownloadHandler.Logger` und `SteamCdnServerPool.Logger` akzeptieren `Microsoft.Extensions.Logging.ILogger`. Für aussagekräftige Logs sollte die Anwendung mindestens Informationen zu App-ID, Depot-ID, Manifest-ID, Dateianzahl, heruntergeladenen Bytes, Retry-Anzahl und Dauer erfassen. Zugangsdaten, Steam-Guard-Codes, Refresh-Token und Branch-Passwörter gehören nie in Logs.
+`DefaultDownloadHandler.Logger` and `SteamCdnServerPool.Logger` accept `Microsoft.Extensions.Logging.ILogger`. For useful logs, record at least app ID, depot ID, manifest ID, file count, downloaded bytes, retry count, and duration. Never include credentials, Steam Guard codes, refresh tokens, or branch passwords.
 
-Die bestehenden Events (`FileVerified`, `FileDownloaded`, `VerificationCompleted`, `DownloadComplete`) sind für UI-Fortschritt geeignet. Sie sollten nicht für blockierende oder langsame Arbeit verwendet werden, weil sie die Abschlussreihenfolge beeinflussen können.
+The existing events (`FileVerified`, `FileDownloaded`, `VerificationCompleted`, `DownloadComplete`) are suitable for UI progress. Do not use them for slow or blocking work because that can affect completion order.
 
-## Empfohlene nächste Ausbaustufe
+## Recommended next improvements
 
-Die folgenden Punkte sind bewusst nicht in Version 0.9.0 erzwungen, weil sie größere öffentliche API- oder Architekturänderungen benötigen:
+The following items are deliberately not required in version 0.9.0 because they need larger public API or architectural changes:
 
-1. **Asynchroner, begrenzter CDN-Pool** – `BlockingCollection` und die zusätzlichen `Task.Run`-Aufrufe für Chunk-Starts durch einen `Channel<Server>`-basierten Pool mit eindeutigen Servern ersetzen. Das reduziert Thread-Pool-Blockierung und verhindert doppelte Server-Einträge beim Nachfüllen.
-2. **Streaming-Pipeline für Manifeste und Chunks** – Aktuell werden alle `ChunkJob`-Objekte nach der Verifikation gehalten. Eine producer/consumer-Pipeline würde die Peak-Speichernutzung bei sehr großen Depots weiter reduzieren, ist aber ein größeres Redesign wegen Dateiverifikation, Fortschrittsanzeige und Reihenfolgegarantien.
-3. **Konfigurierbare Resilience-Optionen** – Die fünf Chunk-Versuche sollten in einer Optionsklasse mit exponentiellem Backoff, Jitter und einer Gesamtzeitbegrenzung konfigurierbar werden. Derzeit ist die Grenze absichtlich fest, um Endlosschleifen zu verhindern.
-4. **Einheitliche Observability** – `ILoggerFactory`, `ActivitySource` und `Meter` zentral über Optionen in `SteamClient` einspeisen. Sinnvolle Metriken: aktive Downloads, Retry-Zähler, Download-Bytes, Fehler nach Kategorie, CDN-Latenz und Dauer der Verifikation.
-5. **Cache für App- und Branch-Metadaten** – `GetDepotsAsync` kann Branch- und Produktinformationen mehrfach abrufen. Ein zeitlich begrenzter, thread-sicherer Cache würde API-Aufrufe reduzieren; Invalidierung und Berechtigungswechsel müssen dabei klar definiert sein.
-6. **Sichere Token-Speicherung als Erweiterungspunkt** – Der Demo-Authenticator bleibt absichtlich einfach. Eine plattformübergreifende, optionale Secret-Store-Abstraktion sollte in einer Major-Version als separates Paket angeboten werden.
+1. **Asynchronous, bounded CDN pool** — Replace `BlockingCollection` and the additional `Task.Run` calls that start chunks with a `Channel<Server>`-based pool of unique servers. This reduces thread-pool blocking and prevents duplicate server entries while refilling.
+2. **Streaming pipeline for manifests and chunks** — All `ChunkJob` objects are currently retained after verification. A producer/consumer pipeline would further reduce peak memory for very large depots, but requires a larger redesign because of file verification, progress reporting, and ordering guarantees.
+3. **Configurable resilience options** — The five chunk attempts should become an options class with exponential backoff, jitter, and an overall timeout. The current fixed limit deliberately prevents infinite retry loops.
+4. **Unified observability** — Supply `ILoggerFactory`, `ActivitySource`, and `Meter` centrally through `SteamClient` options. Useful metrics include active downloads, retry count, downloaded bytes, failures by category, CDN latency, and verification duration.
+5. **App and branch metadata cache** — `GetDepotsAsync` can retrieve branch and product information repeatedly. A time-bounded, thread-safe cache would reduce API calls; invalidation and entitlement changes must be clearly defined.
+6. **Secure token-storage extension point** — The demo authenticator intentionally remains simple. A cross-platform optional secret-store abstraction should be offered as a separate package in a major version.
 
-## Messplan für einen realen Lasttest
+## Measurement plan for a real load test
 
-1. Ein dediziertes Steam-Testkonto mit einem kleinen, einem mittleren und einem großen berechtigten Depot verwenden.
-2. Für `maxConcurrentDownloadsPerTask` die Werte 2, 4, 8, 16 und 32 messen; höhere Parallelität ist nicht automatisch schneller und kann CDN-Rate-Limits auslösen.
-3. Pro Durchlauf Durchsatz, Peak Working Set, GC-Pausen, offene Dateihandles, CDN-Fehlerquote, Retry-Anzahl und Zeit für Verifikation sowie Download erfassen.
-4. Jede Konfiguration mindestens dreimal in derselben Netzwerkumgebung wiederholen und Median sowie 95. Perzentil vergleichen.
-5. Den Zielordner vor einem Wiederholungsdurchlauf beibehalten, um die Verifikations- und Resume-Performance separat zu bewerten.
+1. Use a dedicated Steam test account with one small, one medium, and one large entitled depot.
+2. Measure `maxConcurrentDownloadsPerTask` at 2, 4, 8, 16, and 32. Higher parallelism is not automatically faster and can trigger CDN rate limits.
+3. For every run, collect throughput, peak working set, GC pauses, open file handles, CDN error rate, retry count, and verification and download duration.
+4. Repeat each configuration at least three times in the same network environment; compare the median and 95th percentile.
+5. Keep the target directory before a repeat run to assess verification and resume performance separately.
 
-## Validierung dieses Änderungsstands
+## Validation of this change set
 
-Release-Build mit aktivierten .NET-Analyzern: keine Warnungen und keine Fehler. Die Test-Suite umfasst 20 Tests, darunter Zustands- und Fehlerweitergabe im Mehrdepot-Handler. Die vollständige CI-validierte Paket-, Coverage- und Schwachstellenprüfung bleibt unverändert aktiv.
+The Release build with .NET analyzers enabled produces no warnings or errors. The test suite includes state and error propagation in the multi-depot handler as well as Windows desktop-authentication tests. CI continues to validate packages, coverage, and known vulnerabilities.

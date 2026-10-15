@@ -1,6 +1,6 @@
-# SteamKitSDK: Nutzungsanleitung
+# SteamKitSDK Usage Guide
 
-Diese Anleitung beschreibt die APIs von Version 0.9.0. Das SDK greift auf Steam über SteamKit2 zu. Es darf nur für Inhalte eingesetzt werden, für die das verwendete Steam-Konto eine Berechtigung besitzt.
+This guide covers the APIs in version 0.9.0. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
 
 ## Installation
 
@@ -8,25 +8,25 @@ Diese Anleitung beschreibt die APIs von Version 0.9.0. Das SDK greift auf Steam 
 dotnet add package SteamKitSDK --version 0.9.0
 ```
 
-Das Projekt benötigt .NET 10. Für Downloads von besitzpflichtigen Spielen oder Workshop-Inhalten ist ein angemeldetes Steam-Konto erforderlich.
+The project requires .NET 10. A signed-in Steam account is required to download owned games or Workshop content.
 
-## Grundprinzip
+## Download lifecycle
 
-Jeder Download folgt immer derselben Reihenfolge:
+Every download follows the same sequence:
 
-1. `SteamClient` mit Zugangsdaten und Authenticator erzeugen.
-2. Mit `ConnectAsync` verbinden.
-3. Über `SteamContentClient` einen `IDownloadHandler` abrufen.
-4. Den Handler mit `SetupAsync` konfigurieren.
-5. Mit `VerifyAsync` lokale Dateien gegen das Manifest prüfen.
-6. Mit `DownloadAsync` fehlende oder abweichende Dateien herunterladen.
-7. Handler, Content-Client und Steam-Client beenden bzw. entsorgen.
+1. Create a `SteamClient` with credentials and an authenticator.
+2. Connect with `ConnectAsync`.
+3. Obtain an `IDownloadHandler` through `SteamContentClient`.
+4. Configure the handler with `SetupAsync`.
+5. Check local files against the manifest with `VerifyAsync`.
+6. Download missing or changed files with `DownloadAsync`.
+7. Shut down or dispose the handler, content client, and Steam client.
 
-`VerifyAsync` ist kein optionaler Schritt: Erst danach befindet sich ein Download-Handler im gültigen Zustand für `DownloadAsync`.
+`VerifyAsync` is not optional: it moves a download handler into the valid state for `DownloadAsync`.
 
-## Anmelden und Steam Guard
+## Sign-in and Steam Guard
 
-`ConsoleSteamAuthenticator` ist für eine lokale, interaktive Anwendung gedacht. Er fragt bei Bedarf nach einem E-Mail- oder Steam-Guard-Code und nach der Bestätigung in der Steam-Mobile-App.
+`ConsoleSteamAuthenticator` is intended for a local interactive console application. It prompts for an email or Steam Guard code when necessary, as well as confirmation in the Steam mobile app.
 
 ```csharp
 using SteamKitSDK.Core;
@@ -38,31 +38,31 @@ var password = Environment.GetEnvironmentVariable("STEAM_PASSWORD")
 
 var credentials = new SteamCredentials(username, password);
 
-// Ohne persistenceDirectory: kein Schreiben von Token auf die Festplatte.
+// Without a persistenceDirectory, no token is written to disk.
 var authenticator = new ConsoleSteamAuthenticator(username);
 
 using var steamClient = new SteamClient(credentials, authenticator);
 
-steamClient.InternalClientConnected += () => Console.WriteLine("Mit Steam verbunden.");
-steamClient.InternalClientLoggedOn += () => Console.WriteLine("Anmeldung abgeschlossen.");
-steamClient.InternalClientDisconnected += () => Console.WriteLine("Steam-Verbindung getrennt.");
+steamClient.InternalClientConnected += () => Console.WriteLine("Connected to Steam.");
+steamClient.InternalClientLoggedOn += () => Console.WriteLine("Sign-in completed.");
+steamClient.InternalClientDisconnected += () => Console.WriteLine("Steam connection closed.");
 
 await steamClient.ConnectAsync();
 ```
 
-Die Umgebungsvariablen verhindern, dass das Passwort in Quellcode oder Shell-Historie landet. Für produktive Dienste sollte eine eigene Klasse von `SteamAuthenticator` abgeleitet werden. Diese implementiert die sieben abstrakten Methoden für Code-Eingabe, Mobile-Bestätigung, Access-Token und Guard-Daten und speichert die beiden letzten Werte ausschließlich in einem betriebssystemgestützten Secret Store (beispielsweise Windows Credential Manager, macOS Keychain oder Linux Secret Service).
+Environment variables keep the password out of source code and shell history. Production services should derive their own `SteamAuthenticator`. It implements the seven abstract callbacks for code entry, mobile confirmation, access tokens, and guard data, and stores the latter two only in an operating-system-backed secret store such as Windows Credential Manager, macOS Keychain, or Linux Secret Service.
 
-> **Wichtig:** Übergibt man `ConsoleSteamAuthenticator` ein `persistenceDirectory`, schreibt die Beispielimplementierung Access-Token und Guard-Daten als Dateien. Das ist nur für einen lokal geschützten Entwicklungsrechner geeignet, nicht für Server oder gemeinsam genutzte Geräte.
+> **Important:** When passed a `persistenceDirectory`, `ConsoleSteamAuthenticator` writes access tokens and guard data as files. Use this only on a protected local development machine, never on a server or shared device.
 
-## WPF und Windows Forms
+## WPF and Windows Forms
 
-Für Desktop-Anwendungen wird das optionale Paket `SteamKitSDK.Windows` verwendet. Es enthält keinen WPF- oder Windows-Forms-Verweis und lässt deshalb beide UI-Frameworks zu. `DesktopSteamAuthenticator` verbindet die SDK-Anmeldung mit drei UI-Callbacks; `DpapiSteamAuthenticationStore` verschlüsselt Access-Token und Guard-Daten mit Windows DPAPI im Kontext des angemeldeten Windows-Benutzers.
+For desktop applications, use the optional `SteamKitSDK.Windows` package. It does not reference WPF or Windows Forms, so it can support either UI framework. `DesktopSteamAuthenticator` connects SDK sign-in to three UI callbacks; `DpapiSteamAuthenticationStore` encrypts access tokens and guard data with Windows DPAPI in the context of the signed-in Windows user.
 
 ```powershell
 dotnet add package SteamKitSDK.Windows --version 0.9.0
 ```
 
-Die Dialoge müssen in der jeweiligen Anwendung auf dem UI-Thread angezeigt werden. Bei WPF geschieht dies über `Dispatcher.InvokeAsync`, bei Windows Forms über `Control.InvokeAsync`. Die folgenden Callbacks stehen stellvertretend für eigene Dialoge und müssen diese Thread-Regel einhalten:
+Dialogs must be displayed on the application's UI thread: use `Dispatcher.InvokeAsync` in WPF and `Control.InvokeAsync` in Windows Forms. The following callbacks represent your own dialogs and must honor that threading requirement:
 
 ```csharp
 using SteamKitSDK.Core;
@@ -93,18 +93,18 @@ using var steamClient = new SteamClient(
 await steamClient.ConnectAsync(cancellationToken);
 ```
 
-`DpapiSteamAuthenticationStore` speichert keine Zugangsdaten, sondern nur die von Steam erhaltenen Access-Token und Guard-Daten. Die Dateien sind an das aktuelle Windows-Benutzerprofil gebunden. Beim bewussten Abmelden sollten sie entfernt werden:
+`DpapiSteamAuthenticationStore` does not store passwords; it stores only access tokens and guard data issued by Steam. The files are bound to the current Windows user profile. Remove them when a user explicitly signs out:
 
 ```csharp
 await new DpapiSteamAuthenticationStore(storageDirectory)
     .DeleteAsync(username, cancellationToken);
 ```
 
-Für serverseitige oder plattformübergreifende Anwendungen ist `SteamKitSDK.Windows` nicht geeignet. Dort muss ein eigener `ISteamAuthenticationStore` mit einem passenden Secret Store verwendet werden.
+`SteamKitSDK.Windows` is not suitable for server-side or cross-platform applications. In those scenarios, provide an `ISteamAuthenticationStore` implementation backed by an appropriate secret store.
 
-## Spiel- bzw. Depot-Download
+## Game or depot download
 
-Das folgende Beispiel lädt alle erreichbaren Depots der öffentlichen Branch einer App. `appId` muss durch die Steam-App-ID des gewünschten Spiels ersetzt werden. Ein Steam-Konto kann nur Depots laden, für die es eine Lizenz besitzt.
+The following example downloads every accessible depot from an app's public branch. Replace `appId` with the Steam app ID of the game you are authorized to download.
 
 ```csharp
 using SteamKitSDK.ContentDelivery;
@@ -112,7 +112,7 @@ using SteamKitSDK.ContentDelivery.Exceptions;
 using SteamKitSDK.ContentDelivery.Models.Downloading;
 using SteamKitSDK.Core;
 
-const uint appId = 440; // Beispiel: Team Fortress 2
+const uint appId = 440; // Example: Team Fortress 2
 var downloadDirectory = Path.Combine(AppContext.BaseDirectory, "downloads", appId.ToString());
 
 using var steamClient = new SteamClient(
@@ -129,12 +129,12 @@ await using IDownloadHandler handler = await contentClient.GetAppDataAsync(
     cancellationToken: cancellationToken);
 
 handler.FileVerified += (_, result) =>
-    Console.WriteLine($"Geprüft: {result.ManifestFile.FileName}; Download nötig: {result.RequiresDownload}");
+    Console.WriteLine($"Verified: {result.ManifestFile.FileName}; download required: {result.RequiresDownload}");
 handler.FileDownloaded += (_, file) =>
     Console.WriteLine($"{handler.TotalProgress:P1} – {file.FileName}");
 handler.VerificationCompleted += (_, result) =>
-    Console.WriteLine($"{result.QueuedFiles.Count} Dateien werden geladen.");
-handler.DownloadComplete += (_, _) => Console.WriteLine("Download abgeschlossen.");
+    Console.WriteLine($"{result.QueuedFiles.Count} files are queued for download.");
+handler.DownloadComplete += (_, _) => Console.WriteLine("Download complete.");
 
 await handler.SetupAsync(
     downloadDirectory,
@@ -146,12 +146,12 @@ await handler.DownloadAsync(cancellationToken);
 steamClient.Shutdown();
 ```
 
-Der Dateifilter wird vor der Verifikation angewendet. Die SDK-interne Pfadauflösung verhindert, dass Namen aus einem Manifest das konfigurierte Download-Verzeichnis verlassen.
+The file filter is applied before verification. The SDK's internal path resolution prevents manifest names from escaping the configured download directory.
 
-### Ein einzelnes Depot oder ein bekanntes Manifest
+### A single depot or a known manifest
 
 ```csharp
-// Ein Depot innerhalb der öffentlichen Branch laden.
+// Download one depot from the public branch.
 await using var depotHandler = await contentClient.GetAppDataAsync(
     appId: 440,
     depotId: 441,
@@ -162,7 +162,7 @@ await depotHandler.SetupAsync(downloadDirectory, _ => true, cancellationToken);
 await depotHandler.VerifyAsync(cancellationToken);
 await depotHandler.DownloadAsync(cancellationToken);
 
-// Alternativ: eine bereits bekannte Manifest-ID verwenden.
+// Alternatively, use an already known manifest ID.
 await using var manifestHandler = await contentClient.GetAppDataAsync(
     appId: 440,
     depotId: 441,
@@ -170,17 +170,17 @@ await using var manifestHandler = await contentClient.GetAppDataAsync(
     cancellationToken: cancellationToken);
 ```
 
-Die Überladung mit einer Manifest-ID ist nützlich für reproduzierbare Builds. Eine Manifest-ID umgeht jedoch keine Steam-Berechtigungsprüfung beim Abruf des Depot-Schlüssels.
+The manifest-ID overload is useful for reproducible builds. It does not bypass Steam authorization when retrieving the depot key.
 
-### Passwortgeschützte Branches
+### Password-protected branches
 
-Zunächst können die Branches abgefragt werden. Anschließend wird das Passwort ausschließlich an den API-Aufruf übergeben; es darf nicht geloggt werden.
+First query the available branches. Pass the password only to the API call; never write it to logs.
 
 ```csharp
 var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 foreach (var branch in branches)
 {
-    Console.WriteLine($"{branch.Name}: Passwort nötig = {branch.RequiresPassword}");
+    Console.WriteLine($"{branch.Name}: password required = {branch.RequiresPassword}");
 }
 
 var branchPassword = GetBranchPasswordFromSecretStore();
@@ -197,20 +197,20 @@ await using var betaHandler = await contentClient.GetAppDataAsync(
     cancellationToken: cancellationToken);
 ```
 
-Aktuelle V2-Manifeste werden unterstützt. Alte V1-verschlüsselte Manifest-IDs werden mit `NotSupportedException` abgelehnt, weil SteamKit2 3.4 die notwendige alte Hilfsfunktion nicht mehr anbietet.
+Current V2 manifests are supported. Legacy V1 encrypted manifest IDs are rejected with `NotSupportedException` because SteamKit2 3.4 no longer provides the required helper.
 
-## Workshop-Mod herunterladen
+## Downloading a Workshop item
 
-Ein Workshop-Element wird über seine `PublishedFileId` geladen. Die Methode ermittelt Metadaten, Lizenz-/Zugriffsstatus und bei Steam-CDN-Inhalten das passende Manifest selbst.
+A Workshop item is downloaded through its `PublishedFileId`. The SDK obtains metadata, license and access status, and the matching manifest for Steam CDN content automatically.
 
 ```csharp
 using SteamKitSDK.ContentDelivery.Models.Downloading;
 
-const ulong workshopItemId = 3417789720; // Beispiel-ID; durch eigene PublishedFileId ersetzen
+const ulong workshopItemId = 3417789720; // Replace with your own PublishedFileId
 var workshopDirectory = Path.Combine(AppContext.BaseDirectory, "downloads", "workshop", workshopItemId.ToString());
 
 var details = await contentClient.GetPublishedFileDetailsAsync(workshopItemId, cancellationToken);
-Console.WriteLine($"Workshop-Titel: {details.title}");
+Console.WriteLine($"Workshop title: {details.title}");
 
 await using IDownloadHandler workshopHandler = await contentClient.GetPublishedFileDataAsync(
     workshopItemId,
@@ -224,9 +224,9 @@ await workshopHandler.VerifyAsync(cancellationToken);
 await workshopHandler.DownloadAsync(cancellationToken);
 ```
 
-Nicht jedes Workshop-Element ist ein herunterladbarer Community-Inhalt. In diesem Fall wirft die SDK-Methode `SteamPublishedFileIsNotDownloadableException`. Fehlende Lizenz oder eingeschränkter Zugriff führen zu den entsprechenden Zugriffs- bzw. Lizenz-Exceptions.
+Not every Workshop item is downloadable community content. In that case, the SDK throws `SteamPublishedFileIsNotDownloadableException`. Missing licenses or restricted access result in the corresponding access or license exceptions.
 
-Für Workshop-Kataloge sollte immer eine maximale Ergebniszahl festgelegt werden, damit die Abfrage nicht unbeschränkt Speicher belegt:
+For Workshop catalogs, always set a maximum result count so that the query does not consume unbounded memory:
 
 ```csharp
 var newestItems = await contentClient.GetPublishedFilesForAppIdRawAsync(
@@ -235,9 +235,9 @@ var newestItems = await contentClient.GetPublishedFilesForAppIdRawAsync(
     cancellationToken);
 ```
 
-## Abbruch, Fehlerbehandlung und Aufräumen
+## Cancellation, error handling, and cleanup
 
-Ein `CancellationToken` wird in alle potenziell lang laufenden Aufrufe weitergereicht. Bei einem Abbruch wird `OperationCanceledException` weitergegeben und der Handler bleibt erneut einrichtbar.
+Pass a `CancellationToken` to every potentially long-running operation. On cancellation, `OperationCanceledException` is propagated and the handler can be configured again.
 
 ```csharp
 using var cancellationSource = new CancellationTokenSource(TimeSpan.FromMinutes(10));
@@ -250,11 +250,11 @@ try
 }
 catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
 {
-    Console.WriteLine("Der Download wurde abgebrochen.");
+    Console.WriteLine("Download cancelled.");
 }
 catch (SteamDownloadException exception)
 {
-    Console.Error.WriteLine($"Steam-Download fehlgeschlagen: {exception.Message}");
+    Console.Error.WriteLine($"Steam download failed: {exception.Message}");
 }
 finally
 {
@@ -262,11 +262,11 @@ finally
 }
 ```
 
-Die wichtigen Ausnahmegruppen befinden sich in `SteamKitSDK.Core.Exceptions` und `SteamKitSDK.ContentDelivery.Exceptions`. Anwendungen sollten erwartete Zugriffs-, Lizenz-, Branch- und Downloadfehler gezielt behandeln und niemals Zugangsdaten, Branch-Passwörter oder Access-Token protokollieren.
+The main exception groups are in `SteamKitSDK.Core.Exceptions` and `SteamKitSDK.ContentDelivery.Exceptions`. Applications should handle expected access, license, branch, and download failures explicitly, and must never log credentials, branch passwords, or access tokens.
 
-## Anonyme Nutzung
+## Anonymous use
 
-Öffentliche Daten können – soweit Steam dies erlaubt – ohne Anmeldung abgefragt werden. Anonyme Zugänge besitzen keine Lizenzen und eignen sich deshalb nicht für geschützte Spiel- oder Workshop-Downloads.
+Public data can be queried without sign-in where Steam permits it. Anonymous accounts have no licenses, so they cannot download protected game or Workshop content.
 
 ```csharp
 using var steamClient = new SteamClient();
@@ -276,60 +276,60 @@ await steamClient.ConnectAsync(cancellationToken);
 var branches = await contentClient.GetBranchesAsync(appId, cancellationToken);
 ```
 
-## Betriebshinweise
+## Operational guidance
 
-- Begrenze `maxConcurrentDownloadsPerTask` passend zu Bandbreite, Speicher und Steam-Ratenlimits; 8 ist ein vernünftiger Startwert.
-- Wiederverwende einen verbundenen `SteamClient` für mehrere Vorgänge und rufe `Shutdown()` beim Beenden auf.
-- Verwende einen eigenen, pro App/Account getrennten Download-Ordner.
-- Verwahre Passwörter, Refresh-Token und Guard-Daten in einem Secret Store. Keine Klartext-Dateien, Repository-Commits oder Kommandozeilenargumente verwenden.
-- Prüfe vor Releases die in diesem Repository dokumentierten Tests und den Sicherheitsbericht.
+- Set `maxConcurrentDownloadsPerTask` according to bandwidth, memory, and Steam rate limits; 8 is a reasonable starting value.
+- Reuse a connected `SteamClient` for multiple operations and call `Shutdown()` when the application exits.
+- Use a separate download directory for each application and account.
+- Keep passwords, refresh tokens, and guard data in a secret store. Never use plaintext files, repository commits, or command-line arguments.
+- Before releases, run the tests documented in this repository and review the security report.
 
-## Integrierter Test-Client
+## Included test client
 
-Das Projekt `SteamKitSDK.TestClient` ist ein kleiner Konsolenclient für reale, kontrollierte Smoke-Tests. Er verwendet keine Zugangsdaten aus Argumenten und speichert keine Token. Steam Guard und die Mobile-Bestätigung werden interaktiv über `ConsoleSteamAuthenticator` abgefragt.
+`SteamKitSDK.TestClient` is a small console client for controlled real-world smoke tests. It accepts no credentials via command-line arguments and stores no tokens. Steam Guard and mobile confirmation are prompted interactively through `ConsoleSteamAuthenticator`.
 
-Im interaktiven Menü fragt der Client nach Steam-Benutzername und Passwort, falls die nachstehenden Umgebungsvariablen nicht gesetzt sind. Das Passwort wird maskiert eingegeben und weder gespeichert noch ausgegeben.
+The interactive menu asks for the Steam username and password when the environment variables below are not set. Password input is masked and is neither persisted nor displayed.
 
-Vor dem Start müssen die Zugangsdaten nur für den aktuellen Prozess als Umgebungsvariablen verfügbar sein:
+Before starting, credentials only need to be available as environment variables for the current process:
 
 ```powershell
-$env:STEAM_USERNAME = "dein-steam-name"
-$env:STEAM_PASSWORD = "dein-passwort"
+$env:STEAM_USERNAME = "your-steam-name"
+$env:STEAM_PASSWORD = "your-password"
 ```
 
-Ein sicherer Testablauf für ein Spiel ist:
+A safe game-test workflow is:
 
 ```powershell
-# 1. Verfügbare Branches prüfen.
+# 1. List available branches.
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --list-branches
 
-# 2. Manifest und vorhandene Dateien prüfen, ohne einen Download zu starten.
+# 2. Check the manifest and local files without downloading.
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --verify-only
 
-# 3. Download nach expliziter Bestätigung starten.
+# 3. Start the download after explicit confirmation.
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 `
   --directory .\downloads\tf2 --max-concurrency 8 --pause
 ```
 
-`--yes` überspringt die interaktive Bestätigung und ist deshalb nur für bewusst automatisierte Testläufe gedacht. `Ctrl+C` bricht Verifikation oder Download ab. Für einen passwortgeschützten Branch wird das Passwort ebenfalls nicht als Argument übergeben:
-
-Beim Doppelklick ohne Argumente startet der Client ein interaktives Menü für Spiel-, Workshop- und Branch-Tests. Mit `--pause` bleibt die Konsole auch nach einem ausgeführten Kommandozeilentest geöffnet.
-
-Im Menü fragt der Client nach der App- beziehungsweise Workshop-ID und anschließend ausdrücklich nach dem Installationsordner. Ein leerer Wert verwendet den sichtbaren Standardpfad unter `%LOCALAPPDATA%\SteamKitSDK\downloads`; ein eigener absoluter oder relativer Pfad ist möglich. Umschließende Anführungszeichen werden automatisch entfernt.
+`--yes` skips interactive confirmation and should therefore be used only for deliberate automated test runs. `Ctrl+C` cancels verification or download. For a password-protected branch, the password is also not passed as an argument:
 
 ```powershell
-$env:STEAM_BRANCH_PASSWORD = "branch-passwort"
+$env:STEAM_BRANCH_PASSWORD = "branch-password"
 dotnet run --project SteamKitSDK.TestClient -- --app-id 440 --branch beta --verify-only
 ```
 
-Ein einzelnes Depot lässt sich mit `--depot-id` begrenzen. Workshop-Elemente werden über ihre PublishedFileId getestet:
+Double-clicking the client without arguments opens an interactive menu for game, Workshop, and branch tests. `--pause` keeps the console open after a command-line test finishes.
+
+The menu asks for the app or Workshop ID and then explicitly for the installation directory. An empty value uses the displayed default under `%LOCALAPPDATA%\SteamKitSDK\downloads`; you can enter an absolute or relative path. Surrounding quotation marks are removed automatically.
+
+Use `--depot-id` to limit a test to one depot. Test Workshop items with their PublishedFileId:
 
 ```powershell
 dotnet run --project SteamKitSDK.TestClient -- --workshop-id 3417789720 `
   --directory .\downloads\workshop-test
 ```
 
-Nach dem Test sollten die Umgebungsvariablen aus der aktuellen Shell entfernt werden:
+After testing, remove environment variables from the current shell:
 
 ```powershell
 Remove-Item Env:STEAM_USERNAME, Env:STEAM_PASSWORD, Env:STEAM_WEB_API_KEY, Env:STEAM_BRANCH_PASSWORD -ErrorAction SilentlyContinue

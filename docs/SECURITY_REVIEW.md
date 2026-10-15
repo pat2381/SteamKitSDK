@@ -1,26 +1,26 @@
-# Sicherheitsprüfung
+# Security Review
 
-Stand: 15. Oktober 2026, Version 0.9.0.
+Status: October 15, 2026, version 0.9.0.
 
-## Durchgeführte Prüfungen
+## Checks performed
 
-- Locked Restore, Release-Build mit Warnungen als Fehler sowie aktivierten .NET-Analyzern und kompletter Testlauf.
-- NuGet-Schwachstellenscan einschließlich transitiver Abhängigkeiten.
-- Suche nach typischen Geheimnis-Markern und manueller Review der Authentifizierungs-, Download- und Dateipfade.
-- Paketbau als NuGet-Paket.
+- Locked restore, Release build with warnings treated as errors, .NET analyzers enabled, and a complete test run.
+- NuGet vulnerability scan including transitive dependencies.
+- Search for common secret markers and a manual review of authentication, download, and file-system paths.
+- NuGet package build.
 
-## Ergebnis
+## Result
 
-Zum Prüfzeitpunkt wurden keine bekannten anfälligen NuGet-Pakete gefunden. Der Analyzer-Build enthielt keine Warnungen oder Fehler. 17 Tests prüfen den Download über eine lokale HTTP-Testinstanz, Abbruchverhalten, Dateischreibvorgänge, Client-Lebenszyklus, nicht unterstützte Legacy-Manifeste sowie Sicherheitsregressionen bei Pfadauflösung und Fehlermeldungen. Eine Suche nach typischen Geheimnis-Markern im Quellbestand war ebenfalls ohne Fund.
+At the time of review, no known vulnerable NuGet packages were found. The analyzer build produced no warnings or errors. The test suite covers downloads through a local HTTP test server, cancellation behavior, file writes, client lifetime, unsupported legacy manifests, and security regressions in path resolution and error messages. A search for common secret markers in the source tree also found no results.
 
-Folgende Befunde wurden in diesem Review behoben:
+This review resolved the following findings:
 
-1. Download-Dateinamen werden vor dem Schreiben kanonisch aufgelöst und dürfen das konfigurierte Zielverzeichnis nicht verlassen. Dies schützt vor `..`- und absoluten Pfaden aus Manifesten oder Legacy-Workshop-Metadaten.
-2. `SteamInvalidBranchPasswordException` enthält das Branch-Passwort nicht mehr in der Fehlermeldung.
+1. Download filenames are canonicalized before writing and cannot escape the configured destination directory. This protects against `..` and absolute paths from manifests or legacy Workshop metadata.
+2. `SteamInvalidBranchPasswordException` no longer includes a branch password in its error message.
 
-## Restrisiken und Betriebsregeln
+## Residual risks and operating rules
 
-- `ConsoleSteamAuthenticator` ist eine interaktive Beispielimplementierung. Mit gesetztem `persistenceDirectory` speichert sie Access-Token und Guard-Daten als Klartext. Für Produktion muss eine eigene `SteamAuthenticator`-Implementierung mit einem Secret Store verwendet werden.
-- Ein automatischer Test gegen echte Steam-Konten, Lizenzen oder Workshop-Inhalte ist absichtlich nicht Teil der CI. Er würde Zugangsdaten und kostenpflichtige/externe Ressourcen erfordern. Vor dem produktiven Einsatz ist ein manueller Smoke-Test mit einem dedizierten Testkonto nötig.
-- Workshop-URLs und Steam-CDN-Endpunkte sind externe Datenquellen. Das SDK prüft Zielpfade, kann aber weder die Lizenzberechtigung noch die Verfügbarkeit externer Steam-Dienste garantieren.
-- Zugangsdaten, Access-Token, Guard-Daten und Branch-Passwörter dürfen nicht geloggt, in Sourcecode hinterlegt oder als Kommandozeilenargumente übergeben werden.
+- `ConsoleSteamAuthenticator` is an interactive sample implementation. When configured with a `persistenceDirectory`, it stores access tokens and guard data as plaintext. Production applications must use a dedicated `SteamAuthenticator` implementation with a secret store. Windows desktop applications can use the DPAPI-backed store in `SteamKitSDK.Windows`.
+- Automated tests against real Steam accounts, licenses, or Workshop content are intentionally not part of CI. They require credentials and paid or external resources. Perform a manual smoke test with a dedicated test account before production use.
+- Workshop URLs and Steam CDN endpoints are external data sources. The SDK validates destination paths but cannot guarantee entitlement or the availability of external Steam services.
+- Never log credentials, access tokens, guard data, or branch passwords; never commit them to source control or pass them as command-line arguments.
