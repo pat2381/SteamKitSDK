@@ -258,10 +258,12 @@ dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 --verify-only
 
 # 3. Download nach expliziter Bestätigung starten.
 dotnet run --project BytexDigital.Steam.TestClient -- --app-id 440 `
-  --directory .\downloads\tf2 --max-concurrency 8
+  --directory .\downloads\tf2 --max-concurrency 8 --pause
 ```
 
 `--yes` überspringt die interaktive Bestätigung und ist deshalb nur für bewusst automatisierte Testläufe gedacht. `Ctrl+C` bricht Verifikation oder Download ab. Für einen passwortgeschützten Branch wird das Passwort ebenfalls nicht als Argument übergeben:
+
+Beim Doppelklick ohne Argumente startet der Client ein interaktives Menü für Spiel-, Workshop- und Branch-Tests. Mit `--pause` bleibt die Konsole auch nach einem ausgeführten Kommandozeilentest geöffnet.
 
 ```powershell
 $env:STEAM_BRANCH_PASSWORD = "branch-passwort"

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading;
@@ -16,6 +17,149 @@ public static class Program
     private const string BranchPasswordEnvironmentVariable = "STEAM_BRANCH_PASSWORD";
 
     private static async Task<int> Main(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            return await RunInteractiveMenuAsync();
+        }
+
+        var pauseBeforeExit = Array.Exists(
+            args,
+            argument => string.Equals(argument, "--pause", StringComparison.OrdinalIgnoreCase));
+        var exitCode = await RunAsync(args);
+
+        if (pauseBeforeExit && !Console.IsInputRedirected)
+        {
+            Console.WriteLine();
+            Console.Write("Zum Schließen eine Taste drücken …");
+            Console.ReadKey(intercept: true);
+            Console.WriteLine();
+        }
+
+        return exitCode;
+    }
+
+    private static async Task<int> RunInteractiveMenuAsync()
+    {
+        while (true)
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== BytexDigital.Steam Test Client ===");
+            Console.WriteLine("1. Spiel oder Depot prüfen / herunterladen");
+            Console.WriteLine("2. Workshop-Mod prüfen / herunterladen");
+            Console.WriteLine("3. Branches eines Spiels anzeigen");
+            Console.WriteLine("0. Beenden");
+            Console.Write("Auswahl: ");
+
+            switch (Console.ReadLine()?.Trim())
+            {
+                case "1":
+                    await RunMenuCommandAsync(CreateGameMenuArguments());
+                    break;
+                case "2":
+                    await RunMenuCommandAsync(CreateWorkshopMenuArguments());
+                    break;
+                case "3":
+                    await RunMenuCommandAsync(CreateBranchMenuArguments());
+                    break;
+                case "0":
+                case null:
+                    return 0;
+                default:
+                    Console.WriteLine("Ungültige Auswahl.");
+                    break;
+            }
+        }
+    }
+
+    private static async Task RunMenuCommandAsync(string[] arguments)
+    {
+        _ = await RunAsync(arguments);
+        Console.WriteLine();
+        Console.Write("Zum Menü zurückkehren – eine Taste drücken …");
+        Console.ReadKey(intercept: true);
+        Console.WriteLine();
+    }
+
+    private static string[] CreateGameMenuArguments()
+    {
+        var arguments = new List<string> { "--app-id", ReadRequiredValue("Steam-App-ID") };
+        AddOptionalArgument(arguments, "--depot-id", ReadOptionalValue("Depot-ID (leer = alle erreichbaren Depots)"));
+        AddOptionalArgument(arguments, "--branch", ReadOptionalValue("Branch (leer = public)"));
+        AddOptionalArgument(arguments, "--directory", ReadOptionalValue("Zielordner (leer = Standardordner)"));
+        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
+
+        if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
+        {
+            arguments.Add("--verify-only");
+        }
+
+        return arguments.ToArray();
+    }
+
+    private static string[] CreateWorkshopMenuArguments()
+    {
+        var arguments = new List<string> { "--workshop-id", ReadRequiredValue("Workshop-PublishedFileId") };
+        AddOptionalArgument(arguments, "--directory", ReadOptionalValue("Zielordner (leer = Standardordner)"));
+        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
+
+        if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
+        {
+            arguments.Add("--verify-only");
+        }
+
+        return arguments.ToArray();
+    }
+
+    private static string[] CreateBranchMenuArguments() =>
+        ["--app-id", ReadRequiredValue("Steam-App-ID"), "--list-branches"];
+
+    private static string ReadRequiredValue(string label)
+    {
+        while (true)
+        {
+            Console.Write($"{label}: ");
+            var value = Console.ReadLine()?.Trim();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            Console.WriteLine("Dieser Wert ist erforderlich.");
+        }
+    }
+
+    private static string? ReadOptionalValue(string label)
+    {
+        Console.Write($"{label}: ");
+        var value = Console.ReadLine()?.Trim();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static void AddOptionalArgument(ICollection<string> arguments, string option, string? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        arguments.Add(option);
+        arguments.Add(value);
+    }
+
+    private static bool AskYesNo(string question, bool defaultValue)
+    {
+        var suffix = defaultValue ? "[J/n]" : "[j/N]";
+        Console.Write($"{question} {suffix}: ");
+        var value = Console.ReadLine()?.Trim();
+
+        return string.IsNullOrEmpty(value)
+            ? defaultValue
+            : string.Equals(value, "j", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(value, "y", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<int> RunAsync(string[] args)
     {
         if (!TryParseOptions(args, out var options, out var error))
         {
@@ -267,6 +411,8 @@ public static class Program
                 case "--yes":
                     options = options with { AssumeYes = true };
                     break;
+                case "--pause":
+                    break;
                 default:
                     error = $"Unknown option: {option}";
                     return false;
@@ -362,6 +508,7 @@ public static class Program
             Inspect branches:
               dotnet run --project BytexDigital.Steam.TestClient -- --app-id <id> --list-branches
 
+            Without arguments, the client starts an interactive menu. --pause keeps the window open after a command-line test run.
             Ctrl+C cancels a running verification or download safely.
             """);
     }
