@@ -7,6 +7,22 @@
 SteamKitSDK.TestClient/Properties/launchSettings.json
 SteamKitSDK.Clients.CLI/Properties/launchSettings.json
 
+# Local environment and secrets. Commit an explicitly named *.example file instead.
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets.json
+secrets.json
+NuGet.Config.user
+
+# Test client runtime data. This can contain Steam authentication material or downloaded content.
+SteamKitSDK.TestClient/auth/
+SteamKitSDK.TestClient/downloads/
+SteamKitSDK.TestClient/TestResults/
+/downloads/
+/auth/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -47,6 +63,11 @@ Generated\ Files/
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+*.cobertura.xml
+/coverage/
 
 # NUNIT
 *.VisualState.xml
@@ -64,6 +85,8 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+*.nupkg
+*.snupkg
 
 # StyleCop
 StyleCopReport.xml
@@ -303,6 +326,16 @@ paket-files/
 # JetBrains Rider
 .idea/
 *.sln.iml
+
+# Visual Studio Code
+.vscode/
+
+# Local build customizations and operating-system metadata
+Directory.Build.user.props
+Directory.Build.user.targets
+.DS_Store
+Thumbs.db
+*.dmp
 
 # CodeRush personal settings
 .cr/personal
