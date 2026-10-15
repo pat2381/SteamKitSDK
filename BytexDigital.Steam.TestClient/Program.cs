@@ -83,10 +83,12 @@ public static class Program
 
     private static string[] CreateGameMenuArguments()
     {
-        var arguments = new List<string> { "--app-id", ReadRequiredValue("Steam-App-ID") };
+        var appId = ReadRequiredValue("Steam-App-ID");
+        var arguments = new List<string> { "--app-id", appId };
         AddOptionalArgument(arguments, "--depot-id", ReadOptionalValue("Depot-ID (leer = alle erreichbaren Depots)"));
         AddOptionalArgument(arguments, "--branch", ReadOptionalValue("Branch (leer = public)"));
-        AddOptionalArgument(arguments, "--directory", ReadOptionalValue("Zielordner (leer = Standardordner)"));
+        arguments.Add("--directory");
+        arguments.Add(ReadInstallationDirectory($"app-{appId}"));
         AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
 
         if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
@@ -99,8 +101,8 @@ public static class Program
 
     private static string[] CreateWorkshopMenuArguments()
     {
-        var arguments = new List<string> { "--workshop-id", ReadRequiredValue("Workshop-PublishedFileId") };
-        AddOptionalArgument(arguments, "--directory", ReadOptionalValue("Zielordner (leer = Standardordner)"));
+        var workshopId = ReadRequiredValue("Workshop-PublishedFileId");
+        var arguments = new List<string> { "--workshop-id", workshopId, "--directory", ReadInstallationDirectory($"workshop-{workshopId}") };
         AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
 
         if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
@@ -134,6 +136,31 @@ public static class Program
         Console.Write($"{label}: ");
         var value = Console.ReadLine()?.Trim();
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string ReadInstallationDirectory(string contentIdentifier)
+    {
+        var defaultDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "BytexDigital.Steam",
+            "downloads",
+            contentIdentifier);
+
+        while (true)
+        {
+            Console.Write($"Installationsordner [{defaultDirectory}]: ");
+            var input = Console.ReadLine()?.Trim();
+            var selectedDirectory = string.IsNullOrWhiteSpace(input) ? defaultDirectory : input;
+
+            try
+            {
+                return Path.GetFullPath(selectedDirectory);
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                Console.WriteLine("Der angegebene Installationsordner ist ungültig.");
+            }
+        }
     }
 
     private static void AddOptionalArgument(ICollection<string> arguments, string option, string? value)
