@@ -2,6 +2,10 @@
 
 All notable changes are documented here.
 
+## Unreleased
+
+- Added `SteamKitSDK.Windows`, an optional Windows desktop companion package with UI-agnostic Steam Guard dialogs and DPAPI-protected access-token and guard-data storage.
+
 ## 0.9.0 - Modernization release
 
 - Renamed the solution, projects, assembly, package identifier, and public namespaces from `BytexDigital.Steam` to `SteamKitSDK`. Consumers must update their `using` statements and package reference.

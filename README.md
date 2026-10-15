@@ -14,6 +14,7 @@
 - Verify local files against Steam manifests before downloading
 - Report per-file and total download progress
 - Authenticate with Steam Guard, including email codes and mobile confirmations
+- Use the optional `SteamKitSDK.Windows` package for WPF and Windows Forms authentication flows with DPAPI-protected local state
 - Query public and password-protected branches
 - Use cancellation tokens, structured logging, and async disposal throughout
 - Try the functionality with the included interactive console test client

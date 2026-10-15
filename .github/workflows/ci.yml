@@ -2,9 +2,9 @@ name: Continuous integration
 
 on:
   push:
-    branches: [master, development]
+    branches: [main, master, development]
   pull_request:
-    branches: [master, development]
+    branches: [main, master, development]
 
 permissions:
   contents: read
@@ -24,9 +24,9 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
       - name: Test
-        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+        run: dotnet test SteamKitSDK.Tests/SteamKitSDK.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
       - name: Pack
-        run: dotnet pack SteamKitSDK/SteamKitSDK.csproj --configuration Release --no-build --no-restore --output artifacts
+        run: dotnet pack SteamKitSDK.sln --configuration Release --no-build --no-restore --output artifacts
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,6 +46,36 @@ jobs:
         with:
           name: nuget-package
           path: artifacts/*.nupkg
+          if-no-files-found: error
+
+  windows-authentication:
+    name: Windows authentication tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+      - name: Restore
+        run: dotnet restore --locked-mode
+      - name: Build Windows package
+        run: dotnet build SteamKitSDK.Windows.Tests/SteamKitSDK.Windows.Tests.csproj --configuration Release --no-restore
+      - name: Test Windows package
+        run: dotnet test SteamKitSDK.Windows.Tests/SteamKitSDK.Windows.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=windows-authentication-results.trx" --collect:"XPlat Code Coverage"
+      - name: Upload Windows test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: error
+      - name: Upload Windows code coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-code-coverage
+          path: '**/TestResults/**/coverage.cobertura.xml'
           if-no-files-found: error
 
   dependency-review:

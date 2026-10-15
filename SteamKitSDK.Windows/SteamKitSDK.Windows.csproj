@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>SteamKitSDK.Windows</AssemblyName>
+    <RootNamespace>SteamKitSDK.Windows</RootNamespace>
+    <PackageId>SteamKitSDK.Windows</PackageId>
+    <VersionSuffix>$(VersionSuffix)</VersionSuffix>
+    <Version>0.9.0</Version>
+    <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo_squared_128.png</PackageIcon>
+    <RepositoryUrl>https://github.com/pat2381/SteamKitSDK</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Description>Windows desktop authentication helpers for SteamKitSDK, with UI-agnostic prompts and DPAPI-protected credential persistence.</Description>
+    <Company>Bytex Digital UG (haftungsbeschränkt)</Company>
+    <Copyright>Bytex Digital UG (haftungsbeschränkt)</Copyright>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SteamKitSDK\SteamKitSDK.csproj" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE.md" Pack="true" PackagePath="" />
+    <None Include="..\README.md" Pack="true" PackagePath="" />
+    <None Include="..\SteamKitSDK\logo_squared_128.png" Pack="true" PackagePath="" Link="logo_squared_128.png" />
+  </ItemGroup>
+</Project>

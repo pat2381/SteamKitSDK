@@ -50,9 +50,57 @@ steamClient.InternalClientDisconnected += () => Console.WriteLine("Steam-Verbind
 await steamClient.ConnectAsync();
 ```
 
-Die Umgebungsvariablen verhindern, dass das Passwort in Quellcode oder Shell-Historie landet. Für produktive Dienste sollte eine eigene Klasse von `SteamAuthenticator` abgeleitet werden. Diese implementiert die sechs abstrakten Methoden für Code-Eingabe, Mobile-Bestätigung, Access-Token und Guard-Daten und speichert die beiden letzten Werte ausschließlich in einem betriebssystemgestützten Secret Store (beispielsweise Windows Credential Manager, macOS Keychain oder Linux Secret Service).
+Die Umgebungsvariablen verhindern, dass das Passwort in Quellcode oder Shell-Historie landet. Für produktive Dienste sollte eine eigene Klasse von `SteamAuthenticator` abgeleitet werden. Diese implementiert die sieben abstrakten Methoden für Code-Eingabe, Mobile-Bestätigung, Access-Token und Guard-Daten und speichert die beiden letzten Werte ausschließlich in einem betriebssystemgestützten Secret Store (beispielsweise Windows Credential Manager, macOS Keychain oder Linux Secret Service).
 
 > **Wichtig:** Übergibt man `ConsoleSteamAuthenticator` ein `persistenceDirectory`, schreibt die Beispielimplementierung Access-Token und Guard-Daten als Dateien. Das ist nur für einen lokal geschützten Entwicklungsrechner geeignet, nicht für Server oder gemeinsam genutzte Geräte.
+
+## WPF und Windows Forms
+
+Für Desktop-Anwendungen wird das optionale Paket `SteamKitSDK.Windows` verwendet. Es enthält keinen WPF- oder Windows-Forms-Verweis und lässt deshalb beide UI-Frameworks zu. `DesktopSteamAuthenticator` verbindet die SDK-Anmeldung mit drei UI-Callbacks; `DpapiSteamAuthenticationStore` verschlüsselt Access-Token und Guard-Daten mit Windows DPAPI im Kontext des angemeldeten Windows-Benutzers.
+
+```powershell
+dotnet add package SteamKitSDK.Windows --version 0.9.0
+```
+
+Die Dialoge müssen in der jeweiligen Anwendung auf dem UI-Thread angezeigt werden. Bei WPF geschieht dies über `Dispatcher.InvokeAsync`, bei Windows Forms über `Control.InvokeAsync`. Die folgenden Callbacks stehen stellvertretend für eigene Dialoge und müssen diese Thread-Regel einhalten:
+
+```csharp
+using SteamKitSDK.Core;
+using SteamKitSDK.Windows.Authentication;
+
+var storageDirectory = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "MyApplication",
+    "steam-auth");
+
+var dialogs = new DelegatingSteamAuthenticationDialogService(
+    requestTwoFactorCodeAsync: (wasIncorrect, cancellationToken) =>
+        ShowTwoFactorDialogOnUiThreadAsync(wasIncorrect, cancellationToken),
+    requestEmailCodeAsync: (emailDomain, wasIncorrect, cancellationToken) =>
+        ShowEmailCodeDialogOnUiThreadAsync(emailDomain, wasIncorrect, cancellationToken),
+    requestMobileConfirmationAsync: cancellationToken =>
+        ShowMobileConfirmationDialogOnUiThreadAsync(cancellationToken));
+
+var authenticator = new DesktopSteamAuthenticator(
+    username,
+    dialogs,
+    new DpapiSteamAuthenticationStore(storageDirectory));
+
+using var steamClient = new SteamClient(
+    new SteamCredentials(username, password),
+    authenticator);
+
+await steamClient.ConnectAsync(cancellationToken);
+```
+
+`DpapiSteamAuthenticationStore` speichert keine Zugangsdaten, sondern nur die von Steam erhaltenen Access-Token und Guard-Daten. Die Dateien sind an das aktuelle Windows-Benutzerprofil gebunden. Beim bewussten Abmelden sollten sie entfernt werden:
+
+```csharp
+await new DpapiSteamAuthenticationStore(storageDirectory)
+    .DeleteAsync(username, cancellationToken);
+```
+
+Für serverseitige oder plattformübergreifende Anwendungen ist `SteamKitSDK.Windows` nicht geeignet. Dort muss ein eigener `ISteamAuthenticationStore` mit einem passenden Secret Store verwendet werden.
 
 ## Spiel- bzw. Depot-Download
 
