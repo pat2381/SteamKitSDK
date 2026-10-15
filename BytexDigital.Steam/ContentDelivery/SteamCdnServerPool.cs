@@ -13,6 +13,8 @@ using SteamKit2.CDN;
 
 namespace BytexDigital.Steam.ContentDelivery
 {
+#nullable enable
+
     public class SteamCdnServerPool : IDisposable
     {
         private const int MinimumPoolSize = 10;
@@ -24,11 +26,11 @@ namespace BytexDigital.Steam.ContentDelivery
         private readonly AutoResetEvent _populatePoolEvent;
 
         private readonly Task _populatorTask;
-        private SteamContentClient _steamContentClient;
+        private readonly SteamContentClient _steamContentClient;
 
-        public ILogger Logger { get; set; }
+        public ILogger? Logger { get; set; }
         public Client CdnClient { get; }
-        public Server DesignatedProxyServer { get; private set; }
+        public Server? DesignatedProxyServer { get; private set; }
         public bool IsExhausted { get; private set; }
 
         public SteamCdnServerPool(
@@ -38,8 +40,7 @@ namespace BytexDigital.Steam.ContentDelivery
         {
             _steamContentClient = steamContentClient;
             _appId = appId;
-            _cancellationTokenSource =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, new CancellationTokenSource().Token);
+            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _availableServerEndpoints = new BlockingCollection<Server>();
             _activeServerEndpoints = new ConcurrentStack<Server>();
             _populatePoolEvent = new AutoResetEvent(true);
@@ -56,7 +57,7 @@ namespace BytexDigital.Steam.ContentDelivery
 
         public Server GetServer(CancellationToken cancellationToken = default)
         {
-            Server server;
+            Server? server;
 
             do
             {
@@ -182,7 +183,6 @@ namespace BytexDigital.Steam.ContentDelivery
         public void Close()
         {
             _cancellationTokenSource.Cancel();
-            _steamContentClient = null;
         }
     }
 }
