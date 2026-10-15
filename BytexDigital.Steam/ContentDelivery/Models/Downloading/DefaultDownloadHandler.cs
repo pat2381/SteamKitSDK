@@ -194,9 +194,10 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                         new VerificationCompletedArgs(_chunks.Select(x => x.ManifestFile).Distinct().ToList())));
             }
         }
-        catch (Exception)
+        catch
         {
             State = DownloadHandlerStateEnum.SetUp;
+            throw;
         }
     }
 
@@ -228,27 +229,19 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
             Logger?.LogTrace("Got depot key");
 
             // Download all chunks in parallel
-            var sortedChunks = _chunks
-                .GroupBy(x => x.ManifestFile.FileName)
-                .OrderBy(x => x.Key)
-                .SelectMany(x => x);
-
-            var taskFactoriesQueue = sortedChunks.Select(
+            var taskFactories = _chunks.Select(
                     chunkJob =>
                         new Func<Task>(
                             async () => await Task.Run(
-                                () => DownloadChunkAsync(chunkJob, cancellationToken))))
-                .ToList();
+                                () => DownloadChunkAsync(chunkJob, cancellationToken))));
 
-            Logger?.LogTrace($"Starting {taskFactoriesQueue.Count} download tasks");
+            Logger?.LogTrace("Starting download tasks for {ChunkCount} chunks", _chunks.Count);
 
-            if (taskFactoriesQueue.Count > 0)
+            if (!_chunks.IsEmpty)
             {
-                var tasksFactoryFailuresLookup = new ConcurrentDictionary<Func<Task>, int>();
-
                 await ParallelAsync(
                     _steamContentClient.MaxConcurrentDownloadsPerTask,
-                    taskFactoriesQueue,
+                    taskFactories,
                     cancellationToken);
             }
 
@@ -263,25 +256,24 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                 RunEventHandler(() => DownloadComplete!.Invoke(this, EventArgs.Empty));
             }
         }
+        catch
+        {
+            State = DownloadHandlerStateEnum.Failed;
+            throw;
+        }
         finally
         {
             if (_fileWriters.Count > 0)
             {
                 Logger?.LogTrace("Disposing all file writers");
 
-                var disposeTasks = _fileWriters.Select(x => Task.Run(async () => await x.DisposeAsync().AsTask()));
-
-                var cancellationTokenSource = new CancellationTokenSource();
-                var cancellationTcs = new TaskCompletionSource<object>();
-                cancellationTokenSource.Token.Register(() => cancellationTcs.TrySetCanceled(), false);
-
-                await Task.WhenAny(Task.WhenAll(disposeTasks), cancellationTcs.Task);
+                var disposeTasks = _fileWriters.Select(x => x.DisposeAsync().AsTask());
+                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
             }
 
             Logger?.LogTrace("Closing server pool");
             _serverPool?.Close();
 
-            State = DownloadHandlerStateEnum.Failed;
         }
 
         Logger?.LogTrace("Exiting");
@@ -302,17 +294,25 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         IEnumerable<Func<Task>> taskFactories,
         CancellationToken cancellationToken)
     {
-        var taskFactoriesSource = taskFactories.ToArray();
-        var tasksRunning = new List<Task>(50);
-        var index = 0;
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxParallel, 1);
 
-        do
+        using var enumerator = taskFactories.GetEnumerator();
+        var tasksRunning = new List<Task>(maxParallel);
+
+        while (true)
         {
-            while (tasksRunning.Count < maxParallel && index < taskFactoriesSource.Length)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            while (tasksRunning.Count < maxParallel && enumerator.MoveNext())
             {
-                var taskFactory = taskFactoriesSource[index++];
+                var taskFactory = enumerator.Current;
 
                 tasksRunning.Add(taskFactory());
+            }
+
+            if (tasksRunning.Count == 0)
+            {
+                break;
             }
 
             var completedTask = await Task.WhenAny(tasksRunning).ConfigureAwait(false);
@@ -320,7 +320,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
             await completedTask.ConfigureAwait(false);
 
             tasksRunning.Remove(completedTask);
-        } while (index < taskFactoriesSource.Length || tasksRunning.Count != 0);
+        }
     }
 
     private Task VerifyFileAsync(ManifestFile file, string directory, ConcurrentBag<ChunkJob> chunks)
@@ -397,13 +397,14 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
     private async Task DownloadChunkAsync(ChunkJob chunkJob, CancellationToken cancellationToken)
     {
         var downloadedData = new byte[chunkJob.InternalChunk.UncompressedLength];
-        var downloadSuccess = false;
         var writtenBytes = 0;
-        Server server = default;
+        var downloaded = false;
+        Exception lastException = null;
 
-        do
+        for (var attempt = 1; attempt <= 5; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Server server = null;
 
             try
             {
@@ -418,33 +419,43 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                         _serverPool.DesignatedProxyServer)
                     .ConfigureAwait(false);
 
-                downloadSuccess = true;
-            }
-            catch (Exception)
-            {
-                _serverPool.ReturnServer(server, true);
+                _serverPool.ReturnServer(server, false);
                 server = null;
-            }
-        } while (!downloadSuccess);
-
-        if (server != null) _serverPool.ReturnServer(server, false);
-
-        Logger?.LogTrace("Writing to FileWriter");
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await chunkJob.FileWriter.WriteAsync(chunkJob.InternalChunk.Offset, downloadedData[0..writtenBytes])
-                    .ConfigureAwait(false);
-
+                downloaded = true;
                 break;
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // ignore
+                if (server != null) _serverPool.ReturnServer(server, true);
+                throw;
             }
+            catch (Exception exception)
+            {
+                if (server != null) _serverPool.ReturnServer(server, true);
+                lastException = exception;
+                Logger?.LogWarning(
+                    exception,
+                    "Chunk download failed for depot {DepotId}; attempt {Attempt} of {MaximumAttempts}.",
+                    DepotId,
+                    attempt,
+                    5);
+            }
+        }
+
+        if (!downloaded)
+        {
+            throw new SteamDownloadException(lastException ?? new InvalidOperationException("The chunk download did not complete."));
+        }
+
+        Logger?.LogTrace("Writing to FileWriter");
+        try
+        {
+            await chunkJob.FileWriter.WriteAsync(chunkJob.InternalChunk.Offset, downloadedData[0..writtenBytes])
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            throw new SteamDownloadTaskFileTargetWrappedException(chunkJob.FileWriter.Target, exception);
         }
 
         Logger?.LogTrace("Completed downloading chunk");

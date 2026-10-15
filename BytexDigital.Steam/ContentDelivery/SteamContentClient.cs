@@ -268,18 +268,40 @@ public class SteamContentClient : IAsyncDisposable
         AppId appId,
         CancellationToken cancellationToken = default)
     {
+        return await GetPublishedFilesForAppIdRawAsync(appId, int.MaxValue, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets at most <paramref name="maximumResults"/> workshop entries for an application.
+    /// Use this overload for large workshop catalogs to keep the in-memory result bounded.
+    /// </summary>
+    public async Task<IList<PublishedFileDetails>> GetPublishedFilesForAppIdRawAsync(
+        AppId appId,
+        int maximumResults,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumResults, 1);
+
         var paginationCursor = "*";
         var items = new List<PublishedFileDetails>();
+        var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (items.Count < maximumResults)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!visitedCursors.Add(paginationCursor))
+            {
+                throw new InvalidOperationException("Steam returned a repeated workshop pagination cursor.");
+            }
+
             var requestDetails = new CPublishedFile_QueryFiles_Request
             {
                 query_type = (uint) SteamKit.EPublishedFileQueryType.RankedByPublicationDate,
                 cursor = paginationCursor,
                 creator_appid = appId,
                 appid = appId,
-                numperpage = 100,
+                numperpage = (uint)Math.Min(100, maximumResults - items.Count),
 
                 return_vote_data = true,
                 return_children = true,
@@ -298,10 +320,10 @@ public class SteamContentClient : IAsyncDisposable
 
             var returnedItems = methodResponse.Body;
 
-            items.AddRange(returnedItems.publishedfiledetails);
+            items.AddRange(returnedItems.publishedfiledetails.Take(maximumResults - items.Count));
             paginationCursor = returnedItems.next_cursor;
 
-            if (returnedItems.publishedfiledetails.Count == 0)
+            if (returnedItems.publishedfiledetails.Count == 0 || string.IsNullOrEmpty(paginationCursor))
             {
                 break;
             }
@@ -376,7 +398,7 @@ public class SteamContentClient : IAsyncDisposable
         depotIdCondition ??= x => true;
         depots = depots.Where(x => depotIdCondition.Invoke(x)).ToList();
 
-        if (depots == null)
+        if (depots.Count == 0)
         {
             throw new SteamDownloadCriteriaHaveNoResultException(
                 "No depot to download found that matches the criteria.");

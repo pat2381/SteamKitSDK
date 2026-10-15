@@ -178,6 +178,15 @@ await workshopHandler.DownloadAsync(cancellationToken);
 
 Nicht jedes Workshop-Element ist ein herunterladbarer Community-Inhalt. In diesem Fall wirft die SDK-Methode `SteamPublishedFileIsNotDownloadableException`. Fehlende Lizenz oder eingeschränkter Zugriff führen zu den entsprechenden Zugriffs- bzw. Lizenz-Exceptions.
 
+Für Workshop-Kataloge sollte immer eine maximale Ergebniszahl festgelegt werden, damit die Abfrage nicht unbeschränkt Speicher belegt:
+
+```csharp
+var newestItems = await contentClient.GetPublishedFilesForAppIdRawAsync(
+    appId,
+    maximumResults: 250,
+    cancellationToken);
+```
+
 ## Abbruch, Fehlerbehandlung und Aufräumen
 
 Ein `CancellationToken` wird in alle potenziell lang laufenden Aufrufe weitergereicht. Bei einem Abbruch wird `OperationCanceledException` weitergegeben und der Handler bleibt erneut einrichtbar.

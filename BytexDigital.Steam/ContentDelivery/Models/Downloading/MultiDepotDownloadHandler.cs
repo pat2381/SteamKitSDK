@@ -14,10 +14,16 @@ public class MultiDepotDownloadHandler : IDownloadHandler
     /// <summary>
     /// Returns all <see cref="IDownloadHandler"/> that were directly passed to its constructors.
     /// </summary>
-    public IReadOnlyList<IDownloadHandler> Handlers => _multipleFilesHandlers.ToList();
+    public IReadOnlyList<IDownloadHandler> Handlers => _multipleFilesHandlers;
 
     public MultiDepotDownloadHandler(List<IDownloadHandler> multipleFilesHandlers)
     {
+        ArgumentNullException.ThrowIfNull(multipleFilesHandlers);
+        if (multipleFilesHandlers.Count == 0)
+        {
+            throw new ArgumentException("At least one download handler is required.", nameof(multipleFilesHandlers));
+        }
+
         _multipleFilesHandlers = multipleFilesHandlers;
 
         foreach (var handler in _multipleFilesHandlers)
@@ -31,9 +37,11 @@ public class MultiDepotDownloadHandler : IDownloadHandler
     public Func<ManifestFile, bool> FileCondition { get; protected set; }
     public DownloadHandlerStateEnum State { get; protected set; }
 
-    public double TotalProgress => _multipleFilesHandlers.Sum(x => x.TotalProgress) / _multipleFilesHandlers.Count;
+    public double TotalProgress => _multipleFilesHandlers.Count == 0
+        ? 0
+        : _multipleFilesHandlers.Sum(x => x.TotalProgress) / _multipleFilesHandlers.Count;
     public int TotalFileCount => _multipleFilesHandlers.Sum(x => x.TotalFileCount);
-    public ulong TotalFileSize => _multipleFilesHandlers.Select(x => x.TotalFileSize).Aggregate((a, b) => a + b);
+    public ulong TotalFileSize => _multipleFilesHandlers.Aggregate(0UL, (total, handler) => total + handler.TotalFileSize);
 
     public IReadOnlyList<ManifestFile> Files
     {
@@ -69,6 +77,9 @@ public class MultiDepotDownloadHandler : IDownloadHandler
         Func<ManifestFile, bool> condition,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentNullException.ThrowIfNull(condition);
+
         if (State != DownloadHandlerStateEnum.Created)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Created, State);
@@ -116,6 +127,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
         catch
         {
             State = DownloadHandlerStateEnum.Failed;
+            throw;
         }
     }
 
@@ -135,10 +147,12 @@ public class MultiDepotDownloadHandler : IDownloadHandler
             }
 
             DownloadComplete?.Invoke(this, EventArgs.Empty);
+            State = DownloadHandlerStateEnum.Downloaded;
         }
         catch
         {
             State = DownloadHandlerStateEnum.Failed;
+            throw;
         }
     }
 

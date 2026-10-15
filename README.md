@@ -27,6 +27,7 @@ dotnet test --configuration Release --no-build
 
 - [Usage guide with game, workshop, and Steam Guard examples](docs/USAGE.md)
 - [Security review and operational guidance](docs/SECURITY_REVIEW.md)
+- [Performance and reliability review](docs/PERFORMANCE_AND_RELIABILITY_REVIEW.md)
 
 ## Compatibility notes
 

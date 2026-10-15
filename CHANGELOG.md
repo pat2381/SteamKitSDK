@@ -12,6 +12,8 @@ All notable changes are documented here.
 - Retired the unsupported V1 encrypted depot-manifest decryptor. SteamKit2 3.4 no longer exposes the required helper; V2/current branch-password handling remains supported.
 - Hardened download paths against traversal and removed branch passwords from exception messages.
 - Changed the test client to read credentials from environment variables and disabled its plaintext token persistence by default.
+- Improved download state handling, failure propagation, bounded chunk retries, CDN-pool cancellation, and memory usage of parallel downloads.
+- Added bounded workshop-catalog pagination and a performance/reliability review.
 
 ## Upgrade notes
 

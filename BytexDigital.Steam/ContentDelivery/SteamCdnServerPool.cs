@@ -57,6 +57,9 @@ namespace BytexDigital.Steam.ContentDelivery
 
         public Server GetServer(CancellationToken cancellationToken = default)
         {
+        using var linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _cancellationTokenSource.Token);
             Server? server;
 
             do
@@ -72,7 +75,7 @@ namespace BytexDigital.Steam.ContentDelivery
                         //await _populatedEvent.WaitAsync(cancellationToken);
                     }
 
-                    server = _availableServerEndpoints.Take(cancellationToken);
+                    server = _availableServerEndpoints.Take(linkedCancellationTokenSource.Token);
                 }
             } while (server == null);
 
