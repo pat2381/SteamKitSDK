@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using BytexDigital.Steam.ContentDelivery.Models.Downloading;
 using Xunit;
@@ -11,6 +12,21 @@ namespace BytexDigital.Steam.Tests;
 
 public sealed class LegacyDownloadHandlerTests
 {
+    [Fact]
+    public async Task DownloadAsync_WhenCancelled_PropagatesCancellationAndResetsState()
+    {
+        using var handler = new LegacyDownloadHandler("https://example.invalid/content", "content.bin");
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await handler.SetupAsync(Path.GetTempPath(), _ => true);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => handler.DownloadAsync(cancellationTokenSource.Token));
+
+        Assert.Equal(DownloadHandlerStateEnum.SetUp, handler.State);
+    }
+
     [Fact]
     public async Task DownloadAsync_DownloadsContentAndRaisesFileDownloaded()
     {

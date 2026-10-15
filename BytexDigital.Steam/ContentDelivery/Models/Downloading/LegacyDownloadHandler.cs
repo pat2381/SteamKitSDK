@@ -9,19 +9,24 @@ using BytexDigital.Steam.ContentDelivery.Exceptions;
 
 namespace BytexDigital.Steam.ContentDelivery.Models.Downloading;
 
+#nullable enable
+
 public class LegacyDownloadHandler : IDownloadHandler
 {
     private static readonly HttpClient HttpClient = new();
 
     public string FileUrl { get; }
     public string FileName { get; }
-    public string DownloadDirectory { get; protected set; }
-    public Func<ManifestFile, bool> FileCondition { get; protected set; }
+    public string DownloadDirectory { get; protected set; } = string.Empty;
+    public Func<ManifestFile, bool> FileCondition { get; protected set; } = _ => true;
     public DownloadHandlerStateEnum State { get; protected set; }
-    public IReadOnlyList<ManifestFile> Files { get; protected set; }
+    public IReadOnlyList<ManifestFile> Files { get; protected set; } = Array.Empty<ManifestFile>();
 
     public LegacyDownloadHandler(string fileUrl, string fileName)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
         FileUrl = fileUrl;
         FileName = fileName;
         State = DownloadHandlerStateEnum.Created;
@@ -31,10 +36,10 @@ public class LegacyDownloadHandler : IDownloadHandler
     public int TotalFileCount => 1;
     public ulong TotalFileSize { get; private set; }
 
-    public event EventHandler<ManifestFile> FileDownloaded;
-    public event EventHandler<FileVerifiedArgs> FileVerified;
-    public event EventHandler<VerificationCompletedArgs> VerificationCompleted;
-    public event EventHandler<EventArgs> DownloadComplete;
+    public event EventHandler<ManifestFile>? FileDownloaded;
+    public event EventHandler<FileVerifiedArgs>? FileVerified;
+    public event EventHandler<VerificationCompletedArgs>? VerificationCompleted;
+    public event EventHandler<EventArgs>? DownloadComplete;
 
     public Task SetupAsync(
         string directory,
@@ -47,6 +52,9 @@ public class LegacyDownloadHandler : IDownloadHandler
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Created, State);
         }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentNullException.ThrowIfNull(condition);
 
         DownloadDirectory = directory;
         FileCondition = condition;
@@ -123,6 +131,11 @@ public class LegacyDownloadHandler : IDownloadHandler
             {
                 _ = Task.Run(() => DownloadComplete.Invoke(this, new EventArgs()));
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            State = DownloadHandlerStateEnum.SetUp;
+            throw;
         }
         catch
         {

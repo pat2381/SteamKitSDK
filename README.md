@@ -7,6 +7,22 @@ make them easier to use.
 
 As of now, this library's main purpose is to allow for simple content downloading (apps and workshop items) off Steam.
 
+## Requirements
+
+- .NET 10 SDK or runtime
+- A Steam account and an authenticator for authenticated downloads; anonymous access is supported where Steam permits it
+- SteamKit2 3.4.0 is included transitively by this package
+
+## Development
+
+The repository uses locked NuGet restores. Run the following before contributing:
+
+```powershell
+dotnet restore --locked-mode
+dotnet build --configuration Release --no-restore
+dotnet test --configuration Release --no-build
+```
+
 > :warning: **Please note that this library is in early beta. APIs may change heavily between versions.**
 
 ## Download
