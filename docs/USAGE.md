@@ -1,11 +1,11 @@
 # SteamKitSDK Usage Guide
 
-This guide covers the APIs in version 0.9.3. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
+This guide covers the APIs in version 0.9.4. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
 
 ## Installation
 
 ```powershell
-dotnet add package SteamKitSDK --version 0.9.3
+dotnet add package SteamKitSDK --version 0.9.4
 ```
 
 The project requires .NET 10. A signed-in Steam account is required to download owned games or Workshop content.
@@ -59,7 +59,7 @@ Environment variables keep the password out of source code and shell history. Pr
 For desktop applications, use the optional `SteamKitSDK.Windows` package. It does not reference WPF or Windows Forms, so it can support either UI framework. `DesktopSteamAuthenticator` connects SDK sign-in to three UI callbacks; `DpapiSteamAuthenticationStore` encrypts access tokens and guard data with Windows DPAPI in the context of the signed-in Windows user.
 
 ```powershell
-dotnet add package SteamKitSDK.Windows --version 0.9.3
+dotnet add package SteamKitSDK.Windows --version 0.9.4
 ```
 
 Dialogs must be displayed on the application's UI thread: use `Dispatcher.InvokeAsync` in WPF and `Control.InvokeAsync` in Windows Forms. The following callbacks represent your own dialogs and must honor that threading requirement:
@@ -197,7 +197,7 @@ await using var betaHandler = await contentClient.GetAppDataAsync(
     cancellationToken: cancellationToken);
 ```
 
-Current V2 manifests are supported. Legacy V1 encrypted manifest IDs are rejected with `NotSupportedException` because SteamKit2 3.4 no longer provides the required helper.
+Current V2 manifests are supported. Legacy V1 encrypted manifest IDs are rejected with `NotSupportedException` because current SteamKit2 versions no longer provide the required helper.
 
 ## Downloading a Workshop item
 

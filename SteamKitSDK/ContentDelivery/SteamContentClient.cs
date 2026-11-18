@@ -743,7 +743,7 @@ public class SteamContentClient : IAsyncDisposable
         if (manifest.Version == DepotEncryptedManifest.EncryptionVersion.V1)
         {
             throw new NotSupportedException(
-                "V1 encrypted depot manifests are no longer supported by SteamKit2 3.4. " +
+                "V1 encrypted depot manifests are no longer supported by current SteamKit2 versions. " +
                 "Use the current Steam branch-password flow to resolve the depot manifest.");
         }
         else

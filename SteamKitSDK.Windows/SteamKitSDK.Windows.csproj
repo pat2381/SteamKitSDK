@@ -6,7 +6,7 @@
     <RootNamespace>SteamKitSDK.Windows</RootNamespace>
     <PackageId>SteamKitSDK.Windows</PackageId>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-    <Version>0.9.3</Version>
+    <Version>0.9.4</Version>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(Version)-$(VersionSuffix)</Version>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
@@ -18,7 +18,7 @@
     <PackageProjectUrl>https://github.com/pat2381/SteamKitSDK</PackageProjectUrl>
     <PackageTags>steam;steamkit;steamkit2;steam-guard;windows;winforms;wpf;dpapi;dotnet</PackageTags>
     <Description>Windows desktop authentication helpers for SteamKitSDK, with UI-agnostic prompts and DPAPI-protected credential persistence.</Description>
-    <PackageReleaseNotes>0.9.3: Corrected the package copyright metadata to identify the current package maintainer.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.4: Updated SteamKit2 to 3.5.0, including upstream content-download validation, encrypted-connection stability, and compression handling fixes.</PackageReleaseNotes>
     <Authors>pat2381</Authors>
     <Company>pat2381</Company>
     <Copyright>Copyright (c) 2026 pat2381</Copyright>

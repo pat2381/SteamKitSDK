@@ -2,6 +2,11 @@
 
 All notable changes are documented here.
 
+## 0.9.4 - SteamKit2 3.5.0 update
+
+- Updated SteamKit2 from 3.4.0 to 3.5.0.
+- Adopted upstream improvements to depot-chunk validation, encrypted-connection stability, compression handling, Steam enums, and protobuf definitions.
+
 ## 0.9.3 - Package metadata correction
 
 - Corrected the NuGet copyright metadata to identify `pat2381` as the current package maintainer.
