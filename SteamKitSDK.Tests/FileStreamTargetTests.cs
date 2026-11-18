@@ -1,6 +1,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
+using SteamKitSDK.ContentDelivery;
+using SteamKitSDK.ContentDelivery.Models;
+using SteamKitSDK.Core;
 using SteamKitSDK.ContentDelivery.Models.Downloading;
 using Xunit;
 
@@ -8,6 +12,26 @@ namespace SteamKitSDK.Tests;
 
 public sealed class FileStreamTargetTests
 {
+    [Fact]
+    public async Task RunAsync_MaterializesEmptyDepotFileWithoutCdnConnection()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            using var steamClient = new SteamClient();
+            await using var contentClient = new SteamContentClient(steamClient);
+            var file = new ManifestFile("empty.bin", [], default, 0, SHA1.HashData([]));
+            var manifest = new Manifest([file], 480, 1, DateTime.UtcNow, 0, 0);
+            await using var handler = new DefaultDownloadHandler(contentClient, manifest, 480, 480);
+            var result = await handler.RunAsync(directory.FullName);
+
+            Assert.True(result.IsSuccess, result.Error?.ToString());
+            Assert.Equal(0, new FileInfo(Path.Combine(directory.FullName, file.FileName)).Length);
+            Assert.Equal(1, handler.TotalProgress);
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
     [Fact]
     public async Task CancelAndCompleteBeforeWrite_AreNoOps()
     {

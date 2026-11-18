@@ -1,11 +1,11 @@
 # SteamKitSDK Usage Guide
 
-This guide covers the APIs in version 0.9.4. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
+This guide covers the current source tree. The SDK communicates with Steam through SteamKit2. Use it only for content that the Steam account is entitled to access.
 
 ## Installation
 
 ```powershell
-dotnet add package SteamKitSDK --version 0.9.4
+dotnet add package SteamKitSDK --version 0.9.5
 ```
 
 The project requires .NET 10. A signed-in Steam account is required to download owned games or Workshop content.
@@ -22,7 +22,37 @@ Every download follows the same sequence:
 6. Download missing or changed files with `DownloadAsync`.
 7. Shut down or dispose the handler, content client, and Steam client.
 
-`VerifyAsync` is not optional: it moves a download handler into the valid state for `DownloadAsync`.
+`VerifyAsync` moves a depot handler into the valid state for `DownloadAsync`.
+
+### One-call download and UI progress
+
+Use `RunAsync` with a fresh handler to execute setup, verification and transfer. For example, construct `Progress<DownloadProgress>` on the WPF or WinForms UI thread.
+
+```csharp
+using SteamKitSDK.ContentDelivery.Models.Downloading;
+
+await using var handler = await contentClient.GetPublishedFileDataAsync(workshopId,
+    cancellationToken: cancellationToken);
+
+var progress = new Progress<DownloadProgress>(update =>
+{
+    statusLabel.Text = $"{update.Stage} {update.Fraction:P0} {update.FileName}";
+});
+
+var result = await handler.RunAsync(targetDirectory, progress: progress,
+    cancellationToken: cancellationToken);
+
+if (result.Stage == DownloadStage.Failed)
+    statusLabel.Text = $"{result.InterruptedStage}: {result.Error?.Message}";
+else if (result.Stage == DownloadStage.Cancelled)
+    statusLabel.Text = "Download cancelled.";
+```
+
+The result preserves the original exception and identifies the phase where the operation stopped. Handler acquisition, including Steam manifest requests, runs before `RunAsync` and can raise its own exceptions. The caller owns the handler. Cancel and await an active operation before disposing it.
+
+`IDownloadProgressSource.ProgressChanged` also works with the individual lifecycle methods. Depot updates include app, depot and manifest IDs, file verification decisions, per-file and aggregate transfer bytes and chunk metadata, including compressed and decoded size, offset, CDN host and the successful attempt number. Transfer bytes describe decoded data written to the staging file. Compressed sizes come from Steam's manifest. Legacy HTTP transfers may have an unknown total length. Multi-depot transfer fractions are weighted by bytes; child-specific byte counters describe the child identified in the update. Parallel workers can publish updates concurrently. Keep raw event handlers brief and marshal UI work using `Progress<T>` or a dispatcher.
+
+`SteamClient.ConnectionProgressChanged` reports connection, reconnect, logon and license callbacks with their Steam result codes, cell ID and license count where available. `ConnectionTimeout` defaults to two minutes and covers sign-in and license retrieval.
 
 ## Sign-in and Steam Guard
 
@@ -59,7 +89,7 @@ Environment variables keep the password out of source code and shell history. Pr
 For desktop applications, use the optional `SteamKitSDK.Windows` package. It does not reference WPF or Windows Forms, so it can support either UI framework. `DesktopSteamAuthenticator` connects SDK sign-in to three UI callbacks; `DpapiSteamAuthenticationStore` encrypts access tokens and guard data with Windows DPAPI in the context of the signed-in Windows user.
 
 ```powershell
-dotnet add package SteamKitSDK.Windows --version 0.9.4
+dotnet add package SteamKitSDK.Windows --version 0.9.5
 ```
 
 Dialogs must be displayed on the application's UI thread: use `Dispatcher.InvokeAsync` in WPF and `Control.InvokeAsync` in Windows Forms. The following callbacks represent your own dialogs and must honor that threading requirement:
@@ -131,7 +161,7 @@ await using IDownloadHandler handler = await contentClient.GetAppDataAsync(
 handler.FileVerified += (_, result) =>
     Console.WriteLine($"Verified: {result.ManifestFile.FileName}; download required: {result.RequiresDownload}");
 handler.FileDownloaded += (_, file) =>
-    Console.WriteLine($"{handler.TotalProgress:P1} – {file.FileName}");
+    Console.WriteLine($"{handler.TotalProgress:P1} - {file.FileName}");
 handler.VerificationCompleted += (_, result) =>
     Console.WriteLine($"{result.QueuedFiles.Count} files are queued for download.");
 handler.DownloadComplete += (_, _) => Console.WriteLine("Download complete.");
@@ -217,7 +247,7 @@ await using IDownloadHandler workshopHandler = await contentClient.GetPublishedF
     cancellationToken: cancellationToken);
 
 workshopHandler.FileDownloaded += (_, file) =>
-    Console.WriteLine($"{workshopHandler.TotalProgress:P1} – {file.FileName}");
+    Console.WriteLine($"{workshopHandler.TotalProgress:P1} - {file.FileName}");
 
 await workshopHandler.SetupAsync(workshopDirectory, _ => true, cancellationToken);
 await workshopHandler.VerifyAsync(cancellationToken);

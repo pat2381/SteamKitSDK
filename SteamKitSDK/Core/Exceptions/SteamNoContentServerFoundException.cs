@@ -9,5 +9,10 @@ namespace SteamKitSDK.ContentDelivery.Exceptions
             $"No content servers could be found for app id = {appId}.")
         {
         }
+
+        internal SteamNoContentServerFoundException(AppId appId, Exception innerException)
+            : base($"No Steam content server became available for app {appId}.", innerException)
+        {
+        }
     }
 }

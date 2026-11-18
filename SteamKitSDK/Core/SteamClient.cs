@@ -25,9 +25,7 @@ namespace SteamKitSDK.Core
         }
 
         private readonly CancellationTokenSource _cancellationTokenSource;
-        private readonly AsyncManualResetEvent _clientFaultedEvent = new AsyncManualResetEvent(false);
         private readonly AsyncManualResetEvent _clientReadyEvent = new AsyncManualResetEvent(false);
-        private readonly AsyncSemaphore _clientReconnectSemaphore = new AsyncSemaphore(1);
         internal readonly SteamKit.SteamApps _steamAppsHandler;
         private readonly SteamAuthenticator? _steamAuthenticator;
         internal readonly SteamKit.SteamContent _steamContentHandler;
@@ -35,6 +33,14 @@ namespace SteamKitSDK.Core
         internal AsyncManualResetEvent _licensesReceived = new AsyncManualResetEvent(false);
         private int _logonAttemptsCounter;
         private int _cmAttemptsCounter;
+        private int _connectStarted;
+        private int _disposed;
+        private int _reconnectScheduled;
+        private int _reconnectAttempts;
+        private readonly object _notificationLock = new();
+        private Task _lastNotification = Task.CompletedTask;
+
+        public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromMinutes(2);
 
         /// <summary>
         ///     Credentials that this instance will use to log in after connecting.
@@ -57,10 +63,10 @@ namespace SteamKitSDK.Core
         /// <summary>
         ///     Indicates whether the client is ready for any operation.
         /// </summary>
-        public bool IsConnected => _clientReadyEvent.IsSet;
+        public bool IsConnected => _clientReadyEvent.IsSet && _licensesReceived.IsSet && !CancellationToken.IsCancellationRequested;
 
         /// <summary>
-        ///     Indicates whether the client is faulted. See <see cref="FaultReason" /> for more information.
+        ///     Indicates whether the client is faulted. See <see cref="FaultException" /> for more information.
         /// </summary>
         public bool IsFaulted => FaultException != null;
 
@@ -144,16 +150,17 @@ namespace SteamKitSDK.Core
             CallbackManager.Subscribe<SteamKit.SteamUser.LoggedOffCallback>(OnLoggedOff);
             CallbackManager.Subscribe<SteamKit.SteamApps.LicenseListCallback>(OnLicenseList);
 
-            Task.Run(async () => await CallbackManagerHandler());
+            _ = Task.Run(CallbackManagerHandlerAsync);
         }
 
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             State = SteamClientState.ShutDown;
             
             FaultException ??= new SteamClientDisposedException();
             
-            _clientFaultedEvent.Set();
+            _clientReadyEvent.Reset();
             _cancellationTokenSource.Cancel();
             
             InternalClient.Disconnect();
@@ -169,6 +176,7 @@ namespace SteamKitSDK.Core
         public event Action? InternalClientDisconnected;
         public event Action? InternalClientLoggedOn;
         public event Action? InternalClientLoggedOff;
+        public event EventHandler<SteamConnectionProgress>? ConnectionProgressChanged;
 
         public void Shutdown()
         {
@@ -182,33 +190,40 @@ namespace SteamKitSDK.Core
         /// <exception cref="SteamClientFaultedException">Client is faulted.</exception>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
-            if (State != SteamClientState.Created) throw new SteamClientAlreadyRunningException();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (CancellationToken.IsCancellationRequested) throw new SteamClientDisposedException();
+            using var timeout = new CancellationTokenSource(ConnectionTimeout);
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            if (Interlocked.Exchange(ref _connectStarted, 1) != 0) throw new SteamClientAlreadyRunningException();
             State = SteamClientState.Running;
-
-            if (_cancellationTokenSource.IsCancellationRequested) throw new SteamClientDisposedException();
-
-            InternalClientAttemptingConnect?.Invoke();
-
-            InternalClient.Connect(ForcedServer);
-
-            var readyTask = _clientReadyEvent.WaitAsync(cancellationToken);
-            var faultedTask = _clientFaultedEvent.WaitAsync(cancellationToken);
-
-            var task = await Task.WhenAny(readyTask, faultedTask);
-
-            if (task == faultedTask) throw new SteamClientFaultedException(FaultException ?? new SteamClientDisposedException());
-
-            // If we are an anonymous user, the callback about owned licenses will not fire.
-            if (!Credentials.IsAnonymous)
+            if (Volatile.Read(ref _disposed) != 0)
             {
-                // Wait for all licenses to be received before continuing.
-                await _licensesReceived.WaitAsync(cancellationToken);
+                State = SteamClientState.ShutDown;
+                throw new SteamClientDisposedException();
             }
-            else
+
+            try
             {
-                // Manually set them to nothing for an anonymous user.
-                Licenses = new List<SteamKit.SteamApps.LicenseListCallback.License>();
-                _licensesReceived.Set();
+                PublishConnection(new(SteamConnectionStage.Connecting), InternalClientAttemptingConnect);
+                if (CancellationToken.IsCancellationRequested) throw new SteamClientDisposedException();
+                InternalClient.Connect(ForcedServer);
+                if (CancellationToken.IsCancellationRequested)
+                {
+                    InternalClient.Disconnect();
+                }
+
+                await AwaitReadyCoreAsync(lifetime.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
+            {
+                var exception = new TimeoutException("Steam connection, logon or license retrieval exceeded the configured connection timeout.");
+                SetFaultedAndShutdown(exception);
+                throw exception;
+            }
+            catch
+            {
+                Shutdown();
+                throw;
             }
         }
 
@@ -221,14 +236,34 @@ namespace SteamKitSDK.Core
         /// <exception cref="SteamClientNotReadyException"></exception>
         public async Task AwaitReadyAsync(CancellationToken cancellationToken)
         {
-            var readyTask = _clientReadyEvent.WaitAsync(cancellationToken);
-            var faultedTask = _clientFaultedEvent.WaitAsync(cancellationToken);
+            using var timeout = new CancellationTokenSource(ConnectionTimeout);
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try
+            {
+                await AwaitReadyCoreAsync(lifetime.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException("Steam did not become ready within the configured connection timeout.");
+            }
+        }
 
-            var task = await Task.WhenAny(readyTask, faultedTask);
-
-            if (task == faultedTask) throw new SteamClientFaultedException(FaultException ?? new SteamClientDisposedException());
-
-            if (!readyTask.IsCompletedSuccessfully) throw new SteamClientNotReadyException();
+        private async Task AwaitReadyCoreAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (State == SteamClientState.Created) throw new SteamClientNotReadyException();
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationToken);
+            try
+            {
+                await _clientReadyEvent.WaitAsync(lifetime.Token).ConfigureAwait(false);
+                await _licensesReceived.WaitAsync(lifetime.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && IsFaulted)
+            {
+                throw new SteamClientFaultedException(FaultException!);
+            }
+            if (IsFaulted) throw new SteamClientFaultedException(FaultException!);
+            if (!IsConnected) throw new SteamClientNotReadyException();
         }
 
         private void AttemptLogin()
@@ -238,7 +273,11 @@ namespace SteamKitSDK.Core
                 _ = Task.Run(
                     async () =>
                     {
-                        _logonAttemptsCounter++;
+                        if (Interlocked.Increment(ref _logonAttemptsCounter) > MaximumLogonAttempts)
+                        {
+                            SetFaultedAndShutdown(new SteamConnectException());
+                            return;
+                        }
                         var accessToken = string.Empty;
                         
                         try
@@ -260,12 +299,13 @@ namespace SteamKitSDK.Core
                                             Username = Credentials.Username,
                                             Password = Credentials.Password,
                                             IsPersistentSession = false,
-                                            Authenticator = new SteamAuthenticatorAdapter(authenticator),
+                                            Authenticator = new SteamAuthenticatorAdapter(authenticator, CancellationToken),
                                             GuardData = string.IsNullOrEmpty(guardData) ? null : guardData
                                         })
                                     .WaitAsync(_cancellationTokenSource.Token);
 
-                                var pollResponse = await authSession.PollingWaitForResultAsync(CancellationToken);
+                                var pollResponse = await authSession.PollingWaitForResultAsync(CancellationToken)
+                                    .WaitAsync(CancellationToken);
 
                                 accessToken = pollResponse.RefreshToken;
 
@@ -287,24 +327,26 @@ namespace SteamKitSDK.Core
                         }
                         catch (Exception ex)
                         {
-                            OnUnhandledException?.Invoke(this, ex);
-                        }
-                        
-                        // Don't spam unsuccessful logon attempts as this might get us rate limited
-                        if (_logonAttemptsCounter > MaximumLogonAttempts)
-                        {
-                            SetFaultedAndShutdown(new SteamConnectException());
-
+                            if (CancellationToken.IsCancellationRequested) return;
+                            SetFaultedAndShutdown(new InvalidOperationException("Steam token retrieval or persistence failed.", ex));
                             return;
                         }
-
-                        _steamUserHandler.LogOn(
-                            new SteamKit.SteamUser.LogOnDetails
-                            {
-                                Username = Credentials.Username,
-                                AccessToken = accessToken,
-                                LoginID = (uint) new Random().Next(100000000, 999999999)
-                            });
+                        
+                        if (CancellationToken.IsCancellationRequested) return;
+                        try
+                        {
+                            _steamUserHandler.LogOn(
+                                new SteamKit.SteamUser.LogOnDetails
+                                {
+                                    Username = Credentials.Username,
+                                    AccessToken = accessToken,
+                                    LoginID = (uint)Random.Shared.Next(100000000, 999999999)
+                                });
+                        }
+                        catch (Exception ex)
+                        {
+                            SetFaultedAndShutdown(new InvalidOperationException("SteamKit could not submit the logon request.", ex));
+                        }
                     });
             }
             else
@@ -313,65 +355,84 @@ namespace SteamKitSDK.Core
             }
         }
 
-        private Task CallbackManagerHandler()
+        private async Task CallbackManagerHandlerAsync()
         {
-            while (!_cancellationTokenSource.IsCancellationRequested)
+            try
             {
-                CallbackManager.RunWaitAllCallbacks(TimeSpan.FromMilliseconds(10));
+                while (!CancellationToken.IsCancellationRequested)
+                {
+                    await CallbackManager.RunWaitCallbackAsync(CancellationToken).ConfigureAwait(false);
+                }
             }
-
-            return Task.CompletedTask;
+            catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                SetFaultedAndShutdown(new InvalidOperationException("The SteamKit callback loop failed.", ex));
+            }
         }
 
         private void OnLicenseList(SteamKit.SteamApps.LicenseListCallback callback)
         {
+            if (callback.Result != SteamKit.EResult.OK)
+            {
+                PublishConnection(new(SteamConnectionStage.LicenseResponse, callback.Result));
+                SetFaultedAndShutdown(new SteamAuthenticationException(callback.Result));
+                return;
+            }
             Licenses = new List<SteamKit.SteamApps.LicenseListCallback.License>(callback.LicenseList);
 
             _licensesReceived.Set();
+            PublishConnection(new(SteamConnectionStage.LicenseResponse, callback.Result, LicenseCount: Licenses.Count));
         }
 
         private void OnConnected(SteamKit.SteamClient.ConnectedCallback callback)
         {
-            InternalClientConnected?.Invoke();
-
+            PublishConnection(new(SteamConnectionStage.Connected), InternalClientConnected);
+            if (CancellationToken.IsCancellationRequested) return;
             AttemptLogin();
         }
 
         private void OnDisconnected(SteamKit.SteamClient.DisconnectedCallback callback)
         {
-            InternalClientDisconnected?.Invoke();
-
             _clientReadyEvent.Reset();
+            _licensesReceived.Reset();
+            PublishConnection(new(SteamConnectionStage.Disconnected, UserInitiated: callback.UserInitiated), InternalClientDisconnected);
 
             if (callback.UserInitiated) return;
 
             if (CancellationToken.IsCancellationRequested) return;
-
-            _ = Task.Run(
-                async () =>
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(1), CancellationToken);
-
-                    CancellationToken.ThrowIfCancellationRequested();
-
-                    // Keep this thread hostage until noone is currently performing work that might change how we sign into Steam, e.g.
-                    // authentication details such as 2FA code
-                    using var lk = await _clientReconnectSemaphore.LockAsync(CancellationToken);
-
-                    CancellationToken.ThrowIfCancellationRequested();
-
-                    InternalClientAttemptingConnect?.Invoke();
-
-                    InternalClient.Connect(ForcedServer);
-                });
+            if (Interlocked.Exchange(ref _reconnectScheduled, 1) != 0) return;
+            _ = ReconnectAsync();
         }
 
-        private async void OnLoggedOn(SteamKit.SteamUser.LoggedOnCallback callback)
+        private async Task ReconnectAsync()
         {
-            InternalClientLoggedOn?.Invoke();
+            try
+            {
+                var attempt = Interlocked.Increment(ref _reconnectAttempts);
+                if (attempt > MaximumCmServerAttempts)
+                {
+                    SetFaultedAndShutdown(new SteamNoCmServerFoundException());
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(1), CancellationToken).ConfigureAwait(false);
+                Interlocked.Exchange(ref _reconnectScheduled, 0);
+                PublishConnection(new(SteamConnectionStage.Connecting, ReconnectAttempt: attempt), InternalClientAttemptingConnect);
+                if (CancellationToken.IsCancellationRequested) return;
+                InternalClient.Connect(ForcedServer);
+                if (CancellationToken.IsCancellationRequested) InternalClient.Disconnect();
+            }
+            catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                SetFaultedAndShutdown(new InvalidOperationException("SteamKit could not reconnect.", ex));
+            }
+        }
 
-            // Locking this semaphore makes the reconnect logic halt until we are done in this method
-            using var lk = await _clientReconnectSemaphore.LockAsync();
+        private void OnLoggedOn(SteamKit.SteamUser.LoggedOnCallback callback)
+        {
+            if (CancellationToken.IsCancellationRequested) return;
+            PublishConnection(new(SteamConnectionStage.LogonResponse, callback.Result, callback.CellID), InternalClientLoggedOn);
 
             if (callback.Result == SteamKit.EResult.OK)
             {
@@ -379,7 +440,10 @@ namespace SteamKitSDK.Core
                 ActiveCellId = callback.CellID;
 
                 _logonAttemptsCounter = 0;
+                _cmAttemptsCounter = 0;
+                Interlocked.Exchange(ref _reconnectAttempts, 0);
 
+                if (Credentials.IsAnonymous) _licensesReceived.Set();
                 _clientReadyEvent.Set();
             }
             else
@@ -387,9 +451,8 @@ namespace SteamKitSDK.Core
                 if (callback.Result == SteamKit.EResult.AccountLogonDenied ||
                     callback.Result == SteamKit.EResult.AccountLoginDeniedNeedTwoFactor)
                 {
-                    // By returning, we are releasing the aquired semaphore. This will make the disconnected
-                    // callback continue it's execution and attempt a reconnect if our client hasn't been marked
-                    // as cancelled/closed.
+                    if (_logonAttemptsCounter >= MaximumLogonAttempts)
+                        SetFaultedAndShutdown(new SteamAuthenticationException(callback.Result));
                     return;
                 }
 
@@ -429,6 +492,7 @@ namespace SteamKitSDK.Core
 
         private void SetFaultedAndShutdown(Exception exception)
         {
+            if (CancellationToken.IsCancellationRequested) return;
             FaultException = exception;
             
             Shutdown();
@@ -436,9 +500,56 @@ namespace SteamKitSDK.Core
 
         private void OnLoggedOff(SteamKit.SteamUser.LoggedOffCallback callback)
         {
-            InternalClientLoggedOff?.Invoke();
-
             _clientReadyEvent.Reset();
+            _licensesReceived.Reset();
+            PublishConnection(new(SteamConnectionStage.LogoffResponse, callback.Result), InternalClientLoggedOff);
+        }
+
+        private void PublishConnection(SteamConnectionProgress progress, Action? callbacks = null)
+        {
+            var observers = ConnectionProgressChanged;
+            if (observers == null && callbacks == null) return;
+            lock (_notificationLock)
+            {
+                _lastNotification = _lastNotification.ContinueWith(_ =>
+                {
+                    if (observers != null)
+                    {
+                        foreach (EventHandler<SteamConnectionProgress> observer in observers.GetInvocationList())
+                        {
+                            try { observer(this, progress); }
+                            catch (Exception ex) { NotifyObserverError(ex); }
+                        }
+                    }
+                    Notify(callbacks);
+                }, CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default);
+            }
+        }
+
+        private void Notify(Action? callbacks)
+        {
+            if (callbacks is null) return;
+            foreach (Action callback in callbacks.GetInvocationList())
+            {
+                try
+                {
+                    callback();
+                }
+                catch (Exception ex)
+                {
+                    NotifyObserverError(ex);
+                }
+            }
+        }
+
+        private void NotifyObserverError(Exception exception)
+        {
+            if (OnUnhandledException is not { } observers) return;
+            foreach (EventHandler<Exception> observer in observers.GetInvocationList())
+            {
+                try { observer(this, exception); }
+                catch (Exception) { }
+            }
         }
     }
 }

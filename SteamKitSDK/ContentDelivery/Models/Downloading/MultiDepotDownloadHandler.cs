@@ -7,9 +7,11 @@ using SteamKitSDK.ContentDelivery.Exceptions;
 
 namespace SteamKitSDK.ContentDelivery.Models.Downloading;
 
-public class MultiDepotDownloadHandler : IDownloadHandler
+public class MultiDepotDownloadHandler : IDownloadHandler, IDownloadProgressSource
 {
-    private readonly List<IDownloadHandler> _multipleFilesHandlers;
+    private readonly IReadOnlyList<IDownloadHandler> _multipleFilesHandlers;
+    private int _completedVerifications;
+    private readonly DownloadOperation _operation = new();
 
     /// <summary>
     /// Returns all <see cref="IDownloadHandler"/> that were directly passed to its constructors.
@@ -24,12 +26,13 @@ public class MultiDepotDownloadHandler : IDownloadHandler
             throw new ArgumentException("At least one download handler is required.", nameof(multipleFilesHandlers));
         }
 
-        _multipleFilesHandlers = multipleFilesHandlers;
+        _multipleFilesHandlers = Array.AsReadOnly(multipleFilesHandlers.ToArray());
 
         foreach (var handler in _multipleFilesHandlers)
         {
-            handler.FileVerified += (sender, args) => FileVerified?.Invoke(sender, args);
-            handler.FileDownloaded += (sender, args) => FileDownloaded?.Invoke(sender, args);
+            handler.FileVerified += OnFileVerified;
+            handler.FileDownloaded += OnFileDownloaded;
+            if (handler is IDownloadProgressSource source) source.ProgressChanged += OnProgressChanged;
         }
     }
 
@@ -37,9 +40,17 @@ public class MultiDepotDownloadHandler : IDownloadHandler
     public Func<ManifestFile, bool> FileCondition { get; protected set; }
     public DownloadHandlerStateEnum State { get; protected set; }
 
-    public double TotalProgress => _multipleFilesHandlers.Count == 0
-        ? 0
-        : _multipleFilesHandlers.Sum(x => x.TotalProgress) / _multipleFilesHandlers.Count;
+    public double TotalProgress
+    {
+        get
+        {
+            if (State == DownloadHandlerStateEnum.Downloaded) return 1;
+            var total = TotalFileSize;
+            return total == 0
+                ? Handlers.Average(handler => handler.TotalProgress)
+                : Handlers.Sum(handler => handler.TotalFileSize * handler.TotalProgress) / total;
+        }
+    }
     public int TotalFileCount => _multipleFilesHandlers.Sum(x => x.TotalFileCount);
     public ulong TotalFileSize => _multipleFilesHandlers.Aggregate(0UL, (total, handler) => total + handler.TotalFileSize);
 
@@ -52,6 +63,21 @@ public class MultiDepotDownloadHandler : IDownloadHandler
     public event EventHandler<VerificationCompletedArgs> VerificationCompleted;
     public event EventHandler<ManifestFile> FileDownloaded;
     public event EventHandler<EventArgs> DownloadComplete;
+    public event EventHandler<DownloadProgress> ProgressChanged;
+
+    private void OnFileVerified(object sender, FileVerifiedArgs args)
+        => DownloadNotifications.Publish(sender, FileVerified, args);
+
+    private void OnFileDownloaded(object sender, ManifestFile file)
+        => DownloadNotifications.Publish(sender, FileDownloaded, file);
+
+    private void OnProgressChanged(object sender, DownloadProgress progress)
+        => DownloadNotifications.Publish(this, ProgressChanged, progress with
+        {
+            Fraction = progress.Stage == DownloadStage.Verification
+                ? (_completedVerifications + progress.Fraction) / Handlers.Count
+                : TotalProgress
+        });
 
     /// <summary>
     /// Returns all <see cref="IDownloadHandler"/> nested within any child that are either of type <see cref="DefaultDownloadHandler"/> or <see cref="LegacyDownloadHandler"/>.
@@ -62,7 +88,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
             {
                 if (x is MultiDepotDownloadHandler multiDepotDownloadHandler)
                 {
-                    return multiDepotDownloadHandler.Handlers;
+                    return multiDepotDownloadHandler.GetActualHandlers();
                 }
                 else
                 {
@@ -77,6 +103,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
         Func<ManifestFile, bool> condition,
         CancellationToken cancellationToken = default)
     {
+        using var operation = _operation.Enter();
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentNullException.ThrowIfNull(condition);
 
@@ -90,7 +117,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
         foreach (var handler in _multipleFilesHandlers)
         {
-            await handler.SetupAsync(directory, condition, cancellationToken);
+            await handler.SetupAsync(directory, condition, cancellationToken).ConfigureAwait(false);
         }
 
         State = DownloadHandlerStateEnum.SetUp;
@@ -98,6 +125,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
     public async Task VerifyAsync(CancellationToken cancellationToken = default)
     {
+        using var operation = _operation.Enter();
         if (State != DownloadHandlerStateEnum.SetUp)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.SetUp, State);
@@ -105,24 +133,29 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
         try
         {
-            var filesToDownload = new List<ManifestFile>();
+            State = DownloadHandlerStateEnum.Verifying;
+            _completedVerifications = 0;
+            var filesToDownload = new System.Collections.Concurrent.ConcurrentBag<ManifestFile>();
 
             foreach (var handler in _multipleFilesHandlers)
             {
-                handler.FileVerified += (sender, args) =>
+                void Collect(object sender, FileVerifiedArgs args)
                 {
                     if (args.RequiresDownload)
                     {
                         filesToDownload.Add(args.ManifestFile);
                     }
-                };
+                }
 
-                await handler.VerifyAsync(cancellationToken);
+                handler.FileVerified += Collect;
+                try { await handler.VerifyAsync(cancellationToken).ConfigureAwait(false); }
+                finally { handler.FileVerified -= Collect; }
+                _completedVerifications++;
             }
 
             State = DownloadHandlerStateEnum.Verified;
 
-            VerificationCompleted?.Invoke(this, new VerificationCompletedArgs(filesToDownload));
+            DownloadNotifications.Publish(this, VerificationCompleted, new VerificationCompletedArgs(filesToDownload.ToList()));
         }
         catch
         {
@@ -133,6 +166,7 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
     public async Task DownloadAsync(CancellationToken cancellationToken = default)
     {
+        using var operation = _operation.Enter();
         if (State != DownloadHandlerStateEnum.Verified)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Verified, State);
@@ -140,14 +174,15 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
         try
         {
+            State = DownloadHandlerStateEnum.Downloading;
             foreach (var handler in _multipleFilesHandlers)
             {
                 // Start download
-                await handler.DownloadAsync(cancellationToken);
+                await handler.DownloadAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            DownloadComplete?.Invoke(this, EventArgs.Empty);
             State = DownloadHandlerStateEnum.Downloaded;
+            DownloadNotifications.Publish(this, DownloadComplete, EventArgs.Empty);
         }
         catch
         {
@@ -158,11 +193,15 @@ public class MultiDepotDownloadHandler : IDownloadHandler
 
     public async ValueTask DisposeAsync()
     {
+        if (!_operation.StartDisposal()) return;
         foreach (var handler in _multipleFilesHandlers)
         {
             try
             {
-                await handler.DisposeAsync();
+                handler.FileVerified -= OnFileVerified;
+                handler.FileDownloaded -= OnFileDownloaded;
+                if (handler is IDownloadProgressSource source) source.ProgressChanged -= OnProgressChanged;
+                await handler.DisposeAsync().ConfigureAwait(false);
             }
             catch
             {

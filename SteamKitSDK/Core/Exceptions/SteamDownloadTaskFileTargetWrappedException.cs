@@ -8,9 +8,12 @@ namespace SteamKitSDK.ContentDelivery.Exceptions
         public FileTarget ExceptionProducer { get; }
 
         public SteamDownloadTaskFileTargetWrappedException(FileTarget exceptionProducer, Exception innerException)
-            : base(
-                "An error occurred while trying to write the provided file target handler. View the inner exception for more details.",
-                innerException) =>
+            : this(exceptionProducer, "The download file target could not be written.", innerException)
+        {
+        }
+
+        internal SteamDownloadTaskFileTargetWrappedException(FileTarget exceptionProducer, string message, Exception innerException)
+            : base(message, innerException) =>
             ExceptionProducer = exceptionProducer;
     }
 }

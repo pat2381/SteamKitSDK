@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Threading;
 using SteamKitSDK.Core;
 using SteamKitSDK.Core.Enumerations;
 using SteamKitSDK.Core.Exceptions;
@@ -61,6 +62,17 @@ public sealed class CoreValueObjectTests
         using var client = new SteamClient();
 
         Assert.True(client.Credentials.IsAnonymous);
+    }
+
+    [Fact]
+    public async Task SteamClient_ReadyWaitReportsUnstartedClientAndPreservesCallerCancellation()
+    {
+        using var client = new SteamClient();
+        await Assert.ThrowsAsync<SteamClientNotReadyException>(() => client.AwaitReadyAsync(default));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ConnectAsync(cancellation.Token));
+        Assert.Equal(SteamClient.SteamClientState.Created, client.State);
     }
 
     [Fact]

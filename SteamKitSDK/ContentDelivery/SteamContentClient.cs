@@ -28,6 +28,7 @@ public class SteamContentClient : IAsyncDisposable
         _appProductInfos = new();
 
     private readonly CancellationTokenSource _cancellationTokenSource;
+    private int _disposed;
 
     // Cache
     private readonly ConcurrentDictionary<DepotId, byte[]> _depotKeys = new();
@@ -47,8 +48,10 @@ public class SteamContentClient : IAsyncDisposable
 
     private readonly AsyncLock _serverPoolsLock = new();
 
-    public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+    public CancellationToken CancellationToken { get; }
     public SteamClient SteamClient { get; }
+    /// <summary>Additional trusted HTTPS hosts for Steam Workshop legacy downloads.</summary>
+    public Func<Uri, bool> IsAdditionalLegacyWorkshopHostAllowed { get; set; }
 
     internal PublishedFile PublishedFileService { get; }
     internal SteamKit.SteamUser SteamUser { get; }
@@ -74,10 +77,12 @@ public class SteamContentClient : IAsyncDisposable
             ?? throw new InvalidOperationException("SteamKit did not provide a SteamUser handler.");
 
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(SteamClient.CancellationToken);
+        CancellationToken = _cancellationTokenSource.Token;
     }
 
     public ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return default;
         _cancellationTokenSource.Cancel();
 
         foreach (var pool in _serverPools)
@@ -125,9 +130,9 @@ public class SteamContentClient : IAsyncDisposable
 
             try
             {
-                server = pool.GetServer(cancellationToken);
+                server = await pool.GetServerAsync(cancellationToken).ConfigureAwait(false);
 
-                var depotKey = await GetDepotKeyAsync(depotId, appId);
+                var depotKey = await GetDepotKeyAsync(depotId, appId, cancellationToken).ConfigureAwait(false);
 
                 //// Get manifest request code from cache or fetch it and put it into the cache
                 //ulong manifestCode;
@@ -138,17 +143,33 @@ public class SteamContentClient : IAsyncDisposable
                     await SteamClient._steamContentHandler.GetManifestRequestCode(depotId, appId, manifestId)
                         .WaitAsync(cancellationToken);
 
-                var manifest =
-                    await pool.CdnClient.DownloadManifestAsync(depotId, manifestId, manifestCode, server, depotKey)
-                        .WaitAsync(cancellationToken);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(45));
+                var manifest = await pool.CdnClient.DownloadManifestAsync(depotId, manifestId, manifestCode, server, depotKey)
+                    .WaitAsync(timeout.Token).ConfigureAwait(false);
 
 
-                if (manifest.FilenamesEncrypted)
+                if (manifest.FilenamesEncrypted && !manifest.DecryptFilenames(depotKey))
                 {
-                    manifest.DecryptFilenames(depotKey);
+                    throw new SteamManifestDownloadException(
+                        $"Steam could not decrypt filenames in manifest {manifestId} for depot {depotId} of app {appId}.");
                 }
 
+                pool.ReturnServer(server, false);
+                server = null;
                 return manifest;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || CancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (SteamNoContentServerFoundException)
+            {
+                throw;
+            }
+            catch (SteamManifestDownloadException)
+            {
+                throw;
             }
             catch (SteamAccessDeniedException)
             {
@@ -179,7 +200,7 @@ public class SteamContentClient : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         throw new SteamManifestDownloadException(
-            $"Could not download the manifest = {manifestId} after {maxAttempts} attempts.",
+            $"Could not download Steam manifest {manifestId} for depot {depotId} of app {appId} after {maxAttempts} attempts.",
             lastException);
     }
 
@@ -188,27 +209,43 @@ public class SteamContentClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         using var lk = await _serverPoolsLock.LockAsync(cancellationToken);
+        CancellationToken.ThrowIfCancellationRequested();
 
         if (_serverPools.TryGetValue(appId, out var serverPool))
         {
-            return serverPool;
+            if (!serverPool.IsExhausted) return serverPool;
+            _serverPools.TryRemove(appId, out _);
+            serverPool.Dispose();
         }
 
         serverPool = new SteamCdnServerPool(this, appId);
 
         _serverPools.TryAdd(appId, serverPool);
+        if (CancellationToken.IsCancellationRequested)
+        {
+            _serverPools.TryRemove(appId, out _);
+            serverPool.Dispose();
+            CancellationToken.ThrowIfCancellationRequested();
+        }
 
         return serverPool;
     }
 
-    public async Task<byte[]> GetDepotKeyAsync(DepotId depotId, AppId appId)
+    public Task<byte[]> GetDepotKeyAsync(DepotId depotId, AppId appId)
+        => GetDepotKeyAsync(depotId, appId, default);
+
+    public async Task<byte[]> GetDepotKeyAsync(DepotId depotId, AppId appId, CancellationToken cancellationToken)
     {
-        if (_depotKeys.ContainsKey(depotId))
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationToken);
+        lifetime.Token.ThrowIfCancellationRequested();
+        if (_depotKeys.TryGetValue(depotId, out var cachedKey))
         {
-            return _depotKeys[depotId];
+            return (byte[])cachedKey.Clone();
         }
 
-        var result = await SteamApps.GetDepotDecryptionKey(depotId, appId);
+        await SteamClient.AwaitReadyAsync(lifetime.Token).ConfigureAwait(false);
+        var result = await SteamApps.GetDepotDecryptionKey(depotId, appId).ToTask()
+            .WaitAsync(lifetime.Token).ConfigureAwait(false);
 
         if (result.Result != SteamKit.EResult.OK)
         {
@@ -220,11 +257,7 @@ public class SteamContentClient : IAsyncDisposable
             throw new SteamDepotKeyNotRetrievableException(depotId, result.Result);
         }
 
-        while (!_depotKeys.TryAdd(depotId, result.DepotKey))
-        {
-        }
-
-        return result.DepotKey;
+        return (byte[])_depotKeys.GetOrAdd(depotId, result.DepotKey).Clone();
     }
 
     public async Task<PublishedFileDetails> GetPublishedFileDetailsAsync(
@@ -318,6 +351,11 @@ public class SteamContentClient : IAsyncDisposable
                 .ToTask()
                 .WaitAsync(cancellationToken);
 
+            if (methodResponse.Result != SteamKit.EResult.OK)
+            {
+                throw new SteamPublishedFileDetailsFetchException(methodResponse.Result);
+            }
+
             var returnedItems = methodResponse.Body;
 
             items.AddRange(returnedItems.publishedfiledetails.Take(maximumResults - items.Count));
@@ -353,7 +391,11 @@ public class SteamContentClient : IAsyncDisposable
 
         if (!string.IsNullOrEmpty(publishedFileDetails.file_url))
         {
-            return new LegacyDownloadHandler(publishedFileDetails.file_url, publishedFileDetails.filename);
+            return LegacyDownloadHandler.FromSteamWorkshop(publishedFileDetails.file_url, publishedFileDetails.filename,
+                uri => uri.IdnHost.Equals("steamusercontent.com", StringComparison.OrdinalIgnoreCase)
+                    || uri.IdnHost.EndsWith(".steamusercontent.com", StringComparison.OrdinalIgnoreCase)
+                    || uri.IdnHost.Equals("steamusercontent-a.akamaihd.net", StringComparison.OrdinalIgnoreCase)
+                    || IsAdditionalLegacyWorkshopHostAllowed?.Invoke(uri) == true);
         }
 
         manifestId ??= publishedFileDetails.hcontent_file;
@@ -445,6 +487,11 @@ public class SteamContentClient : IAsyncDisposable
             }
         }
 
+        if (multipleFilesHandlers.Count == 0)
+        {
+            throw new SteamDownloadCriteriaHaveNoResultException(
+                $"No accessible depot with a downloadable manifest matched app {appId}, branch '{branch}'.");
+        }
         return new MultiDepotDownloadHandler(multipleFilesHandlers);
     }
 
@@ -1118,7 +1165,7 @@ public class SteamContentClient : IAsyncDisposable
         {
             // Anonymous accounts do not receive a complete license list. Steam's depot-key response is the
             // authoritative access decision for an anonymous content-download request.
-            await GetDepotKeyAsync(depotId, appId);
+            await GetDepotKeyAsync(depotId, appId, cancellationToken);
             return;
         }
 
@@ -1137,7 +1184,7 @@ public class SteamContentClient : IAsyncDisposable
         {
             // Do not request a free license anonymously: Steam does not provide a callback for that flow.
             // The depot-key response decides whether the requested content can be downloaded.
-            await GetDepotKeyAsync(depotId, appId);
+            await GetDepotKeyAsync(depotId, appId, cancellationToken);
             return;
         }
 
