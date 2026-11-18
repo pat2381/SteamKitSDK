@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: |
             **/packages.lock.json
       - name: Restore locked dependencies
-        run: dotnet restore SteamKitSDK.sln --locked-mode
+        run: dotnet restore SteamKitSDK.sln --locked-mode -p:NuGetAuditMode=all -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904,NU1905
       - name: Build Windows authentication tests
         run: dotnet build SteamKitSDK.Windows.Tests/SteamKitSDK.Windows.Tests.csproj --configuration Release --no-restore
       - name: Run Windows authentication tests
@@ -46,7 +46,7 @@ jobs:
           cache-dependency-path: |
             **/packages.lock.json
       - name: Restore locked dependencies
-        run: dotnet restore SteamKitSDK.sln --locked-mode
+        run: dotnet restore SteamKitSDK.sln --locked-mode -p:NuGetAuditMode=all -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904,NU1905
       - name: Build
         run: dotnet build SteamKitSDK.sln --configuration Release --no-restore --warnaserror
       - name: Run cross-platform tests

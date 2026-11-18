@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -32,7 +33,7 @@ public static class Program
         if (pauseBeforeExit && !Console.IsInputRedirected)
         {
             Console.WriteLine();
-            Console.Write("Zum Schließen eine Taste drücken …");
+            Console.Write("Zum Schlie�en eine Taste dr�cken .");
             Console.ReadKey(intercept: true);
             Console.WriteLine();
         }
@@ -46,8 +47,8 @@ public static class Program
         {
             Console.WriteLine();
             Console.WriteLine("=== SteamKitSDK Test Client ===");
-            Console.WriteLine("1. Spiel oder Depot prüfen / herunterladen");
-            Console.WriteLine("2. Workshop-Mod prüfen / herunterladen");
+            Console.WriteLine("1. Spiel oder Depot pr�fen / herunterladen");
+            Console.WriteLine("2. Workshop-Mod pr�fen / herunterladen");
             Console.WriteLine("3. Branches eines Spiels anzeigen");
             Console.WriteLine("0. Beenden");
             Console.Write("Auswahl: ");
@@ -67,7 +68,7 @@ public static class Program
                 case null:
                     return 0;
                 default:
-                    Console.WriteLine("Ungültige Auswahl.");
+                    Console.WriteLine("Ung�ltige Auswahl.");
                     break;
             }
         }
@@ -77,7 +78,7 @@ public static class Program
     {
         _ = await RunAsync(arguments);
         Console.WriteLine();
-        Console.Write("Zum Menü zurückkehren – eine Taste drücken …");
+        Console.Write("Zum Men� zur�ckkehren - eine Taste dr�cken .");
         Console.ReadKey(intercept: true);
         Console.WriteLine();
     }
@@ -90,9 +91,9 @@ public static class Program
         AddOptionalArgument(arguments, "--branch", ReadOptionalValue("Branch (leer = public)"));
         arguments.Add("--directory");
         arguments.Add(ReadInstallationDirectory($"app-{appId}"));
-        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
+        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelit�t (leer = 8)"));
 
-        if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
+        if (AskYesNo("Nur pr�fen, ohne Download?", defaultValue: true))
         {
             arguments.Add("--verify-only");
         }
@@ -104,9 +105,9 @@ public static class Program
     {
         var workshopId = ReadRequiredValue("Workshop-PublishedFileId");
         var arguments = new List<string> { "--workshop-id", workshopId, "--directory", ReadInstallationDirectory($"workshop-{workshopId}") };
-        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelität (leer = 8)"));
+        AddOptionalArgument(arguments, "--max-concurrency", ReadOptionalValue("Parallelit�t (leer = 8)"));
 
-        if (AskYesNo("Nur prüfen, ohne Download?", defaultValue: true))
+        if (AskYesNo("Nur pr�fen, ohne Download?", defaultValue: true))
         {
             arguments.Add("--verify-only");
         }
@@ -159,7 +160,7 @@ public static class Program
             }
             catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                Console.WriteLine("Der angegebene Installationsordner ist ungültig. Gib den Pfad ohne Anführungszeichen ein.");
+                Console.WriteLine("Der angegebene Installationsordner ist ung�ltig. Gib den Pfad ohne Anf�hrungszeichen ein.");
             }
         }
     }
@@ -297,7 +298,7 @@ public static class Program
             eventArgs.Cancel = true;
             if (!cancellationTokenSource.IsCancellationRequested)
             {
-                Console.WriteLine("\nAbbruch angefordert. Aktive Operationen werden beendet …");
+                Console.WriteLine("\nAbbruch angefordert. Aktive Operationen werden beendet .");
                 cancellationTokenSource.Cancel();
             }
         };
@@ -312,10 +313,7 @@ public static class Program
                 steamClient,
                 options.MaxConcurrency);
 
-            steamClient.InternalClientAttemptingConnect += () => Console.WriteLine("Steam: Verbindung wird aufgebaut …");
-            steamClient.InternalClientConnected += () => Console.WriteLine("Steam: verbunden.");
-            steamClient.InternalClientLoggedOn += () => Console.WriteLine("Steam: Anmeldung erfolgreich.");
-            steamClient.InternalClientDisconnected += () => Console.WriteLine("Steam: Verbindung getrennt.");
+            steamClient.ConnectionProgressChanged += (_, update) => PrintConnectionProgress(update);
 
             await steamClient.ConnectAsync(cancellationTokenSource.Token);
 
@@ -337,27 +335,20 @@ public static class Program
                             : $"app-{options.AppId!.Value}");
 
                 Console.WriteLine($"Zielordner: {Path.GetFullPath(targetDirectory)}");
-                Console.WriteLine($"Parallelität: {options.MaxConcurrency}");
+                Console.WriteLine($"Parallelit�t: {options.MaxConcurrency}");
 
-                handler.FileVerified += (_, result) =>
-                {
-                    var action = result.RequiresDownload ? "wird geladen" : "bereits aktuell";
-                    Console.WriteLine($"Prüfung: {result.ManifestFile.FileName} – {action}");
-                };
-                handler.VerificationCompleted += (_, result) =>
-                    Console.WriteLine($"Verifikation abgeschlossen: {result.QueuedFiles.Count} Dateien werden geladen.");
-                handler.FileDownloaded += (_, file) =>
-                    Console.WriteLine($"Datei fertig: {file.FileName}");
-                handler.DownloadComplete += (_, _) => Console.WriteLine("Download abgeschlossen.");
-
-                await handler.SetupAsync(targetDirectory, _ => true, cancellationTokenSource.Token);
-                Console.WriteLine($"{handler.Files.Count} Dateien im ausgewählten Inhalt.");
-
-                await handler.VerifyAsync(cancellationTokenSource.Token);
+                var progress = new ConsoleDownloadProgress();
+                handler.VerificationCompleted += (_, update) =>
+                    Console.WriteLine($"Verifikation abgeschlossen. {update.QueuedFiles.Count} Dateien zum Download vorgemerkt.");
 
                 if (options.VerifyOnly)
                 {
-                    Console.WriteLine("Verify-only abgeschlossen; es wurden keine Dateien heruntergeladen.");
+                    if (handler is IDownloadProgressSource source)
+                        source.ProgressChanged += (_, update) => progress.Report(update);
+                    await handler.SetupAsync(targetDirectory, _ => true, cancellationTokenSource.Token);
+                    Console.WriteLine($"{handler.Files.Count} Dateien im ausgew�hlten Inhalt.");
+                    await handler.VerifyAsync(cancellationTokenSource.Token);
+                    Console.WriteLine("Pr�fung abgeschlossen. Es wurden keine Dateien heruntergeladen.");
                     return 0;
                 }
 
@@ -367,11 +358,8 @@ public static class Program
                     return 0;
                 }
 
-                await ShowProgressUntilCompletedAsync(handler, cancellationTokenSource.Token);
+                return await RunDownloadAsync(handler, targetDirectory, progress, cancellationTokenSource.Token);
             }
-
-            steamClient.Shutdown();
-            return 0;
         }
         catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
         {
@@ -381,7 +369,7 @@ public static class Program
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Test fehlgeschlagen: {exception.Message}");
-            Console.Error.WriteLine("Hinweis: Zugangsdaten, Token und Branch-Passwörter werden nicht ausgegeben.");
+            Console.Error.WriteLine("Hinweis: Zugangsdaten, Token und Branch-Passw�rter werden nicht ausgegeben.");
             return 1;
         }
         finally
@@ -430,18 +418,74 @@ public static class Program
         }
     }
 
-    private static async Task ShowProgressUntilCompletedAsync(IDownloadHandler handler, CancellationToken cancellationToken)
+    private static async Task<int> RunDownloadAsync(
+        IDownloadHandler handler, string directory, IProgress<DownloadProgress> progress, CancellationToken cancellationToken)
     {
-        var downloadTask = handler.DownloadAsync(cancellationToken);
-
-        while (!downloadTask.IsCompleted)
+        var result = await handler.RunAsync(directory, progress: progress, cancellationToken: cancellationToken);
+        if (result.IsSuccess) return 0;
+        if (result.Stage == DownloadStage.Cancelled)
         {
-            Console.Write($"\rFortschritt: {handler.TotalProgress:P1} | Dateien: {handler.TotalFileCount} | Größe: {FormatBytes(handler.TotalFileSize)}   ");
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            Console.Error.WriteLine($"Download abgebrochen. Phase: {result.InterruptedStage}.");
+            return 2;
         }
 
-        await downloadTask;
-        Console.WriteLine($"\rFortschritt: {handler.TotalProgress:P1} | Dateien: {handler.TotalFileCount} | Größe: {FormatBytes(handler.TotalFileSize)}   ");
+        Console.Error.WriteLine($"Download fehlgeschlagen. Phase: {result.InterruptedStage}. " +
+            $"{result.Error?.GetType().Name}: {result.Error?.Message}");
+        return 1;
+    }
+
+    private static void PrintConnectionProgress(SteamConnectionProgress update)
+    {
+        var message = update.Stage switch
+        {
+            SteamConnectionStage.Connecting => update.ReconnectAttempt is { } attempt
+                ? $"Wiederverbindung, Versuch {attempt}." : "Verbindung wird aufgebaut.",
+            SteamConnectionStage.Connected => "Verbindung hergestellt.",
+            SteamConnectionStage.LogonResponse => $"Anmeldung: {update.Result}, Cell-ID: {update.CellId}.",
+            SteamConnectionStage.LicenseResponse => $"Lizenzabruf: {update.Result}, Anzahl: {update.LicenseCount}.",
+            SteamConnectionStage.Disconnected => update.UserInitiated == true ? "Verbindung beendet." : "Verbindung unterbrochen.",
+            SteamConnectionStage.LogoffResponse => $"Abmeldung: {update.Result}.",
+            _ => update.Stage.ToString()
+        };
+        Console.WriteLine($"Steam: {message}");
+    }
+
+    private sealed class ConsoleDownloadProgress : IProgress<DownloadProgress>
+    {
+        private readonly object _gate = new();
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private DownloadStage? _lastStage;
+        private bool _showedFile;
+
+        public void Report(DownloadProgress update)
+        {
+            lock (_gate)
+            {
+                if (update.Stage != _lastStage) _showedFile = false;
+                else if ((update.FileName == null || _showedFile) && _clock.Elapsed < TimeSpan.FromSeconds(1)) return;
+                _lastStage = update.Stage;
+                _showedFile |= update.FileName != null;
+                _clock.Restart();
+
+                var file = update.FileName is { } name ? $" | {name}" : "";
+                var depot = update.DepotId is { } id ? $" | App {update.AppId}, Depot {id}, Manifest {update.ManifestId}" : "";
+                var verification = update.FilesVerified is { } checkedFiles
+                    ? $" | {checkedFiles}/{update.FilesToVerify} Dateien gepr�ft" : "";
+                var bytes = update.TransferBytesWritten is { } written
+                    ? $" | {FormatBytes(written)} / {(update.TransferSize is { } size ? FormatBytes(size) : "unbekannt")}" : "";
+                var chunk = update.ChunkOffset is { } offset
+                    ? $" | Chunk bei {offset:N0} B ({update.ChunkCompressedSize}/{update.ChunkSize} B), CDN {update.ContentServer}, Versuch {update.Attempt}" : "";
+                var message = update.Stage switch
+                {
+                    DownloadStage.Setup => "Download wird vorbereitet.",
+                    DownloadStage.Verification => $"Pr�fung {update.Fraction:P1}{verification}{file}{depot}",
+                    DownloadStage.Transfer => $"�bertragung {update.Fraction:P1}{bytes}{file}{depot}{chunk}",
+                    DownloadStage.Completed => "Download abgeschlossen.",
+                    _ => null
+                };
+                if (message != null) Console.WriteLine(message);
+            }
+        }
     }
 
     private static bool AskForConfirmation()

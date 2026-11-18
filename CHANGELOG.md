@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## 0.9.5
+
+- Added `RunAsync` for setup, verification and transfer, with a result carrying the outcome, interrupted phase and original error.
+- Added structured download and Steam connection progress. The test client now reports transfer details and distinguishes completion, failure and cancellation.
+- Bounded CDN discovery and connection waits, fixed concurrent depot-key cache insertion, and wait for active download workers before cleanup.
+- Stage replacements in temporary files and validate download paths and chunk layouts before writing. Existing files remain available until their replacements are complete.
+- Report Workshop HTTP failures with the status code and restrict URLs resolved from Workshop metadata to trusted HTTPS hosts. Applications can explicitly allow additional trusted hosts.
+- Reject overlapping operations on a single download handler. Cancel and await an active operation before disposing its handler.
+
 ## 0.9.4 - SteamKit2 3.5.0 update
 
 - Updated SteamKit2 from 3.4.0 to 3.5.0.

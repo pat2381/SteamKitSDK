@@ -10,6 +10,8 @@ namespace SteamKitSDK.ContentDelivery.Models.Downloading
     {
         private readonly string _filePath;
         private readonly ulong _fileSize;
+        private readonly Func<string>? _resolveDestination;
+        private string? _stagingPath;
         public FileStream? FileStream { get; private set; }
 
         public FileStreamTarget(string filePath, ulong fileSize)
@@ -17,6 +19,12 @@ namespace SteamKitSDK.ContentDelivery.Models.Downloading
             _filePath = filePath;
             _fileSize = fileSize;
             TotalBytes = fileSize;
+        }
+
+        internal FileStreamTarget(string filePath, ulong fileSize, Func<string> resolveDestination)
+            : this(filePath, fileSize)
+        {
+            _resolveDestination = resolveDestination;
         }
         
         public override async Task CompleteAsync()
@@ -27,19 +35,32 @@ namespace SteamKitSDK.ContentDelivery.Models.Downloading
             }
 
             await FileStream.FlushAsync().ConfigureAwait(false);
-            FileStream.Close();
+            await FileStream.DisposeAsync().ConfigureAwait(false);
             FileStream = null;
+            if (_stagingPath is { } stagingPath)
+            {
+                File.Move(stagingPath, _resolveDestination!(), overwrite: true);
+                _stagingPath = null;
+            }
         }
 
         public override async Task WriteAsync(ulong offset, byte[] data)
         {
+            ArgumentNullException.ThrowIfNull(data);
+            if (offset > _fileSize || (ulong)data.Length > _fileSize - offset || _fileSize > long.MaxValue)
+            {
+                throw new ArgumentOutOfRangeException(nameof(offset), "The write exceeds the declared file size.");
+            }
             if (FileStream == null)
             {
-                FileStream = new FileStream(_filePath, FileMode.Create, FileAccess.Write, FileShare.None, 131072, true);
+                var destination = _resolveDestination?.Invoke() ?? _filePath;
+                var path = _resolveDestination == null ? destination :
+                    Path.Combine(Path.GetDirectoryName(destination)!, $".steam-download-{Guid.NewGuid():N}.tmp");
+                FileStream = new FileStream(path, _resolveDestination == null ? FileMode.Create : FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 131072, true);
+                if (_resolveDestination != null) _stagingPath = path;
                 FileStream.SetLength((long) _fileSize);
             }
-            
-            ArgumentNullException.ThrowIfNull(data);
 
             var fileStream = FileStream ?? throw new InvalidOperationException("The file stream could not be opened.");
             fileStream.Seek((long) offset, SeekOrigin.Begin);
@@ -51,23 +72,23 @@ namespace SteamKitSDK.ContentDelivery.Models.Downloading
         {
             try
             {
-                if (FileStream is null)
-                {
-                    return;
-                }
-
-                await FileStream.FlushAsync().ConfigureAwait(false);
-                FileStream.Close();
+                var stream = FileStream;
                 FileStream = null;
+                if (stream != null) await stream.DisposeAsync().ConfigureAwait(false);
             }
-            catch
+            finally
             {
+                if (_stagingPath is { } stagingPath)
+                {
+                    File.Delete(stagingPath);
+                    _stagingPath = null;
+                }
             }
         }
 
         public override async ValueTask DisposeAsync()
         {
-            await CancelAsync();
+            await CancelAsync().ConfigureAwait(false);
         }
     }
 }

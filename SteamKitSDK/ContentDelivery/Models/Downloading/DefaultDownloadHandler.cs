@@ -16,12 +16,10 @@ using static SteamKit2.DepotManifest;
 
 namespace SteamKitSDK.ContentDelivery.Models.Downloading;
 
-public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDisposable
+public class DefaultDownloadHandler : IDownloadHandler, IDownloadProgressSource
 {
-    //private CancellationTokenSource _cancellationTokenSource;
     internal byte[] _depotKey;
-    internal AsyncAutoResetEvent _eventHandlerCompleted = new(true);
-    internal int _eventHandlersRunning;
+    private readonly DownloadOperation _operation = new();
 
     private ConcurrentDictionary<ManifestFile, FileTarget> _fileTargets = new();
 
@@ -59,6 +57,10 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
     public event EventHandler<FileVerifiedArgs> FileVerified;
     public event EventHandler<VerificationCompletedArgs> VerificationCompleted;
     public event EventHandler<EventArgs> DownloadComplete;
+    public event EventHandler<DownloadProgress> ProgressChanged;
+    private int _verifiedFiles;
+    private long _transferBytesWritten;
+    private ulong _transferSize;
 
     public Task SetupAsync(
         string directory,
@@ -66,24 +68,27 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         CancellationToken cancellationToken = default)
     {
         // Allow setup when not setup yet or already setup, but no state past it
+        using var operation = _operation.Enter();
         if (State != DownloadHandlerStateEnum.Created && State != DownloadHandlerStateEnum.SetUp)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Created, State);
         }
 
-        DownloadDirectory = directory;
-        FileCondition = condition;
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(condition);
+        var root = Path.GetFullPath(directory);
 
         // Filter out files that are directories or that the caller does not want
         IEnumerable<ManifestFile> filteredFiles = Manifest.Files
-            .Where(file => file.Flags != ManifestFileFlag.Directory && FileCondition.Invoke(file))
+            .Where(file => !file.Flags.HasFlag(ManifestFileFlag.Directory) && condition(file))
             .OrderBy(x => x.FileName)
             .ToList();
 
         // Filter all files that are possible duplicates
-        Files = filteredFiles.GroupBy(x => x.FileName)
-            .Select(x => x.First())
-            .ToList();
+        Files = filteredFiles.DistinctBy(file => DownloadPathResolver.ResolveFilePath(root, file.FileName),
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToList();
+        DownloadDirectory = root;
+        FileCondition = condition;
 
         State = DownloadHandlerStateEnum.SetUp;
 
@@ -126,10 +131,8 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         {
             if (State >= DownloadHandlerStateEnum.Verified)
             {
-                var totalBytes = _fileTargets.Sum(x => (long) x.Value.TotalBytes);
-                var currentBytes = _fileTargets.Sum(x => (long) x.Value.WrittenBytes);
-
-                return totalBytes > 0 ? (double) currentBytes / totalBytes : 1;
+                return _transferSize > 0 ? (double)Interlocked.Read(ref _transferBytesWritten) / _transferSize :
+                    State == DownloadHandlerStateEnum.Failed ? 0 : 1;
             }
             else
             {
@@ -140,6 +143,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
     public async Task VerifyAsync(CancellationToken cancellationToken = default)
     {
+        using var operation = _operation.Enter();
         if (State != DownloadHandlerStateEnum.SetUp)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.SetUp, State);
@@ -149,53 +153,24 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         {
             State = DownloadHandlerStateEnum.Verifying;
 
-            var filteredFiles = Files;
+            _verifiedFiles = 0;
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _steamContentClient.CancellationToken);
+            await Parallel.ForEachAsync(Files, ParallelOptions(lifetime.Token), VerifyFileWithContextAsync)
+                .ConfigureAwait(false);
 
-            if (!filteredFiles.Any())
-            {
-                Logger?.LogTrace("No files to download");
-
-                State = DownloadHandlerStateEnum.Verified;
-
-                if (VerificationCompleted != null)
-                {
-                    await WaitForEventHandlersAsync(cancellationToken);
-                    RunEventHandler(() => VerificationCompleted!.Invoke(this, new VerificationCompletedArgs([])));
-                }
-
-                return;
-            }
-
-            // Verify all files in parallel
-            var verificationTaskFactories =
-                filteredFiles.Select(
-                    file => new Func<Task>(
-                        async () => await Task.Run(() => VerifyFileAsync(file, DownloadDirectory, _chunks))));
-
-            Logger?.LogTrace("Verifying files");
-
-            await ParallelAsync(
-                _steamContentClient.MaxConcurrentDownloadsPerTask,
-                verificationTaskFactories,
-                cancellationToken);
-
+            _transferSize = TotalQueuedBytes();
             State = DownloadHandlerStateEnum.Verified;
 
             Logger?.LogTrace("Verification completed");
 
-            if (VerificationCompleted != null)
-            {
-                // Wait for all file verified eventhandlers to finish so we don't send events out of order
-                await WaitForEventHandlersAsync(cancellationToken);
-
-                RunEventHandler(
-                    () => VerificationCompleted!.Invoke(
-                        this,
-                        new VerificationCompletedArgs(_chunks.Select(x => x.ManifestFile).Distinct().ToList())));
-            }
+            DownloadNotifications.Publish(this, VerificationCompleted, new VerificationCompletedArgs(_fileTargets.Keys.ToList()));
         }
         catch
         {
+            await Task.WhenAll(_fileWriters.Select(writer => writer.DisposeAsync().AsTask())).ConfigureAwait(false);
+            _fileWriters.Clear();
+            _fileTargets.Clear();
+            _chunks.Clear();
             State = DownloadHandlerStateEnum.SetUp;
             throw;
         }
@@ -203,6 +178,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
     public async Task DownloadAsync(CancellationToken cancellationToken = default)
     {
+        using var operation = _operation.Enter();
         if (State != DownloadHandlerStateEnum.Verified)
         {
             throw new DownloadHandlerStateMismatchException(DownloadHandlerStateEnum.Verified, State);
@@ -211,50 +187,27 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         try
         {
             State = DownloadHandlerStateEnum.Downloading;
-
-            Logger?.LogTrace("Creating Steam CDN server pool");
-
-            _serverPool = new SteamCdnServerPool(_steamContentClient, AppId, cancellationToken)
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _steamContentClient.CancellationToken);
+            var token = lifetime.Token;
+            token.ThrowIfCancellationRequested();
+            foreach (var writer in _fileWriters.Where(writer => writer.ExpectedBytes == 0))
             {
-                Logger = Logger
-            };
-
-            Logger?.LogTrace("Created Steam CDN server pool");
-
-            Logger?.LogTrace("Fetching depot key");
-
-            // Get the depot key with which we will process all chunks downloaded
-            _depotKey = await _steamContentClient.GetDepotKeyAsync(DepotId, AppId);
-
-            Logger?.LogTrace("Got depot key");
-
-            // Download all chunks in parallel
-            var taskFactories = _chunks.Select(
-                    chunkJob =>
-                        new Func<Task>(
-                            async () => await Task.Run(
-                                () => DownloadChunkAsync(chunkJob, cancellationToken))));
-
-            Logger?.LogTrace("Starting download tasks for {ChunkCount} chunks", _chunks.Count);
+                await writer.WriteAsync(0, []).ConfigureAwait(false);
+            }
 
             if (!_chunks.IsEmpty)
             {
-                await ParallelAsync(
-                    _steamContentClient.MaxConcurrentDownloadsPerTask,
-                    taskFactories,
-                    cancellationToken);
+                _serverPool = new SteamCdnServerPool(_steamContentClient, AppId, token) { Logger = Logger };
+                _depotKey = await _steamContentClient.GetDepotKeyAsync(DepotId, AppId, token).ConfigureAwait(false);
+                await Parallel.ForEachAsync(_chunks, ParallelOptions(token),
+                    (chunk, workerToken) => new ValueTask(DownloadChunkAsync(chunk, workerToken))).ConfigureAwait(false);
             }
 
+            token.ThrowIfCancellationRequested();
             State = DownloadHandlerStateEnum.Downloaded;
             Logger?.LogTrace("Completed download tasks");
 
-            if (DownloadComplete != null)
-            {
-                // Wait for all file verified eventhandlers to finish so we don't send events out of order
-                await WaitForEventHandlersAsync(cancellationToken);
-
-                RunEventHandler(() => DownloadComplete!.Invoke(this, EventArgs.Empty));
-            }
+            DownloadNotifications.Publish(this, DownloadComplete, EventArgs.Empty);
         }
         catch
         {
@@ -279,51 +232,29 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
         Logger?.LogTrace("Exiting");
     }
 
-    private async Task WaitForEventHandlersAsync(CancellationToken cancellationToken = default)
+    private ParallelOptions ParallelOptions(CancellationToken cancellationToken) => new()
     {
-        while (_eventHandlersRunning > 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+        MaxDegreeOfParallelism = _steamContentClient.MaxConcurrentDownloadsPerTask,
+        CancellationToken = cancellationToken,
+        TaskScheduler = TaskScheduler.Default
+    };
 
-            await _eventHandlerCompleted.WaitAsync(cancellationToken);
+    private ulong TotalQueuedBytes() => _fileTargets.Keys.Aggregate(0UL, (total, file) => total + file.TotalSize);
+
+    private async ValueTask VerifyFileWithContextAsync(ManifestFile file, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await VerifyFileAsync(file, DownloadDirectory, _chunks, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new SteamDownloadException($"Could not verify '{file.FileName}' in depot {DepotId}: {exception.Message}", exception);
         }
     }
 
-    private async Task ParallelAsync(
-        int maxParallel,
-        IEnumerable<Func<Task>> taskFactories,
+    private async Task VerifyFileAsync(ManifestFile file, string directory, ConcurrentBag<ChunkJob> chunks,
         CancellationToken cancellationToken)
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThan(maxParallel, 1);
-
-        using var enumerator = taskFactories.GetEnumerator();
-        var tasksRunning = new List<Task>(maxParallel);
-
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            while (tasksRunning.Count < maxParallel && enumerator.MoveNext())
-            {
-                var taskFactory = enumerator.Current;
-
-                tasksRunning.Add(taskFactory());
-            }
-
-            if (tasksRunning.Count == 0)
-            {
-                break;
-            }
-
-            var completedTask = await Task.WhenAny(tasksRunning).ConfigureAwait(false);
-
-            await completedTask.ConfigureAwait(false);
-
-            tasksRunning.Remove(completedTask);
-        }
-    }
-
-    private Task VerifyFileAsync(ManifestFile file, string directory, ConcurrentBag<ChunkJob> chunks)
     {
         var filePath = DownloadPathResolver.ResolveFilePath(directory, file.FileName);
         var fileDirectory = Path.GetDirectoryName(filePath);
@@ -332,7 +263,7 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
         if (File.Exists(filePath))
         {
-            using (var fs = new FileStream(filePath, FileMode.Open))
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 // If the files are the same length, verify them using their hash
                 if ((ulong) fs.Length == file.TotalSize)
@@ -341,22 +272,33 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                     using var sha1 = SHA1.Create();
 
                     // If both files are identical, dont download the file
-                    if (sha1.ComputeHash(bs).SequenceEqual(file.FileHash))
+                    if ((await sha1.ComputeHashAsync(bs, cancellationToken).ConfigureAwait(false)).SequenceEqual(file.FileHash))
                     {
-                        if (FileVerified != null)
-                        {
-                            RunEventHandler(() => FileVerified.Invoke(this, new FileVerifiedArgs(file, false)));
-                        }
-
-                        return Task.CompletedTask;
+                        PublishVerified(file, false);
+                        return;
                     }
                 }
             }
 
-            File.Delete(filePath);
         }
 
-        var target = new FileStreamTarget(filePath, file.TotalSize);
+        ulong expectedOffset = 0;
+        foreach (var chunk in file.ChunkHeaders.OrderBy(chunk => chunk.Offset))
+        {
+            if (chunk.Offset != expectedOffset || chunk.UncompressedLength > file.TotalSize - expectedOffset
+                || chunk.UncompressedLength == 0 || chunk.UncompressedLength > 64 * 1024 * 1024)
+            {
+                throw new InvalidDataException($"Invalid Steam chunk layout for '{file.FileName}' in depot {DepotId}.");
+            }
+            expectedOffset += chunk.UncompressedLength;
+        }
+        if (expectedOffset != file.TotalSize || file.TotalSize > long.MaxValue)
+        {
+            throw new InvalidDataException($"Steam chunks do not cover '{file.FileName}' in depot {DepotId}.");
+        }
+
+        var target = new FileStreamTarget(filePath, file.TotalSize,
+            () => DownloadPathResolver.ResolveFilePath(directory, file.FileName));
 
         _fileTargets.TryAdd(file, target);
 
@@ -386,20 +328,27 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                 });
         }
 
-        if (FileVerified != null)
-        {
-            RunEventHandler(() => FileVerified.Invoke(this, new FileVerifiedArgs(file, true)));
-        }
+        PublishVerified(file, true);
+    }
 
-        return Task.CompletedTask;
+    private void PublishVerified(ManifestFile file, bool requiresDownload)
+    {
+        var verified = Interlocked.Increment(ref _verifiedFiles);
+        DownloadNotifications.Publish(this, FileVerified, new FileVerifiedArgs(file, requiresDownload));
+        DownloadNotifications.Publish(this, ProgressChanged, new DownloadProgress(DownloadStage.Verification,
+            (double)verified / Files.Count, file.FileName, FileSize: file.TotalSize, AppId: AppId,
+            DepotId: DepotId, ManifestId: ManifestId, RequiresDownload: requiresDownload,
+            FilesVerified: verified, FilesToVerify: Files.Count));
     }
 
     private async Task DownloadChunkAsync(ChunkJob chunkJob, CancellationToken cancellationToken)
     {
-        var downloadedData = new byte[chunkJob.InternalChunk.UncompressedLength];
+        byte[] downloadedData = null;
         var writtenBytes = 0;
         var downloaded = false;
         Exception lastException = null;
+        string contentServer = null;
+        var attemptUsed = 0;
 
         for (var attempt = 1; attempt <= 5; attempt++)
         {
@@ -408,7 +357,12 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
             try
             {
-                server = _serverPool.GetServer(cancellationToken);
+                server = await _serverPool.GetServerAsync(cancellationToken).ConfigureAwait(false);
+                contentServer = server.Host;
+                attemptUsed = attempt;
+                downloadedData = new byte[chunkJob.InternalChunk.UncompressedLength];
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(45));
 
                 writtenBytes = await _serverPool.CdnClient.DownloadDepotChunkAsync(
                         DepotId,
@@ -416,17 +370,24 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
                         server,
                         downloadedData,
                         _depotKey,
-                        _serverPool.DesignatedProxyServer)
+                        _serverPool.DesignatedProxyServer).WaitAsync(timeout.Token)
                     .ConfigureAwait(false);
+
+                if (writtenBytes != downloadedData.Length)
+                    throw new InvalidDataException($"Steam CDN returned {writtenBytes} decoded bytes instead of {downloadedData.Length}.");
 
                 _serverPool.ReturnServer(server, false);
                 server = null;
                 downloaded = true;
                 break;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 if (server != null) _serverPool.ReturnServer(server, true);
+                throw;
+            }
+            catch (SteamNoContentServerFoundException)
+            {
                 throw;
             }
             catch (Exception exception)
@@ -444,31 +405,39 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
         if (!downloaded)
         {
-            throw new SteamDownloadException(lastException ?? new InvalidOperationException("The chunk download did not complete."));
+            throw new SteamDownloadException(
+                $"Steam CDN could not download '{chunkJob.ManifestFile.FileName}' at offset {chunkJob.InternalChunk.Offset} " +
+                $"(app {AppId}, depot {DepotId}, manifest {ManifestId}). Last error: {lastException?.GetType().Name}.",
+                lastException);
         }
 
         Logger?.LogTrace("Writing to FileWriter");
         try
         {
-            await chunkJob.FileWriter.WriteAsync(chunkJob.InternalChunk.Offset, downloadedData[0..writtenBytes])
+            await chunkJob.FileWriter.WriteAsync(chunkJob.InternalChunk.Offset, downloadedData)
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            throw new SteamDownloadTaskFileTargetWrappedException(chunkJob.FileWriter.Target, exception);
+            throw new SteamDownloadTaskFileTargetWrappedException(chunkJob.FileWriter.Target,
+                $"Could not write '{chunkJob.ManifestFile.FileName}' at offset {chunkJob.InternalChunk.Offset} in depot {DepotId}: {exception.Message}",
+                exception);
         }
 
         Logger?.LogTrace("Completed downloading chunk");
+        var transferred = (ulong)Interlocked.Add(ref _transferBytesWritten, writtenBytes);
+        DownloadNotifications.Publish(this, ProgressChanged, new DownloadProgress(DownloadStage.Transfer,
+            TotalProgress, chunkJob.ManifestFile.FileName, chunkJob.FileWriter.Target.WrittenBytes,
+            chunkJob.ManifestFile.TotalSize, AppId, DepotId, ManifestId, chunkJob.InternalChunk.Offset,
+            chunkJob.InternalChunk.CompressedLength, chunkJob.InternalChunk.UncompressedLength, attemptUsed, contentServer,
+            TransferBytesWritten: transferred, TransferSize: _transferSize));
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (!_operation.StartDisposal()) return;
         // Dispose all file writers to release potential file streams
-        await Task.WhenAll(_fileWriters.Select(x => Task.Run(async () => await x.DisposeAsync().AsTask())));
-
-        _fileTargets = null;
-        _fileWriters = null;
-        _steamContentClient = null;
+        await Task.WhenAll(_fileWriters.Select(x => x.DisposeAsync().AsTask())).ConfigureAwait(false);
 
         // Dispose the server pool
         try
@@ -486,25 +455,6 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
     public void Dispose()
     {
         DisposeAsync().GetAwaiter().GetResult();
-    }
-
-    internal void RunEventHandler(Action action)
-    {
-        Interlocked.Increment(ref _eventHandlersRunning);
-
-        _ = Task.Run(
-            () =>
-            {
-                try
-                {
-                    action.Invoke();
-                }
-                finally
-                {
-                    Interlocked.Decrement(ref _eventHandlersRunning);
-                    _eventHandlerCompleted.Set();
-                }
-            });
     }
 
     internal class FileWriter : IAsyncDisposable
@@ -532,33 +482,24 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
         public async ValueTask DisposeAsync()
         {
-            await CancelAsync();
+            await CancelAsync().ConfigureAwait(false);
 
             _handler = null;
         }
 
         public async Task WriteAsync(ulong offset, byte[] data)
         {
-            using var semLock = await _writeLock.LockAsync().ConfigureAwait(false);
-
-            if (IsDone) return;
-
-            await Target.WriteAsync(offset, data);
-
-            WrittenBytes += (ulong) data.Length;
-            Target.WrittenBytes = WrittenBytes;
-
-            if (WrittenBytes == ExpectedBytes)
+            using (await _writeLock.LockAsync().ConfigureAwait(false))
             {
+                if (IsDone) return;
+                await Target.WriteAsync(offset, data).ConfigureAwait(false);
+                WrittenBytes += (ulong)data.Length;
+                Target.WrittenBytes = WrittenBytes;
+                if (WrittenBytes != ExpectedBytes) return;
                 await Target.CompleteAsync().ConfigureAwait(false);
-
                 IsDone = true;
-
-                if (_handler.FileDownloaded != null)
-                {
-                    _handler.RunEventHandler(() => _handler.FileDownloaded.Invoke(_handler, ManifestFile));
-                }
             }
+            DownloadNotifications.Publish(_handler, _handler.FileDownloaded, ManifestFile);
         }
 
         public async Task CancelAsync()
@@ -571,9 +512,9 @@ public class DefaultDownloadHandler : IDownloadHandler, IAsyncDisposable, IDispo
 
                 IsDone = true;
             }
-            catch
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // ignored
+                _handler?.Logger?.LogWarning(exception, "Could not remove temporary download data for {FileName}.", ManifestFile.FileName);
             }
         }
     }

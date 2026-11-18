@@ -66,7 +66,7 @@ await using IDownloadHandler handler = await contentClient.GetAppDataAsync(
     branch: "public");
 
 handler.FileDownloaded += (_, file) =>
-    Console.WriteLine($"{handler.TotalProgress:P1} – {file.FileName}");
+    Console.WriteLine($"{handler.TotalProgress:P1} - {file.FileName}");
 
 await handler.SetupAsync(@"D:\SteamDownloads\440", _ => true);
 await handler.VerifyAsync();
@@ -89,11 +89,11 @@ For scripted use, run `dotnet run --project SteamKitSDK.TestClient -- --help`.
 
 ## Documentation
 
-- [Complete usage guide](docs/USAGE.md) — game, depot, Workshop, Steam Guard, branches, progress, and error handling
-- [Security review](docs/SECURITY_REVIEW.md) — security model and deployment guidance
-- [Performance and reliability review](docs/PERFORMANCE_AND_RELIABILITY_REVIEW.md) — design and operational considerations
-- [Modernization plan](MODERNIZATION_PLAN.md) — completed upgrade work and remaining release tasks
-- [NuGet publishing guide](docs/NUGET_PUBLISHING.md) — secure, keyless publication through GitHub Actions
+- [Complete usage guide](docs/USAGE.md) - game, depot, Workshop, Steam Guard, branches, progress, and error handling
+- [Security review](docs/SECURITY_REVIEW.md) - security model and deployment guidance
+- [Performance and reliability review](docs/PERFORMANCE_AND_RELIABILITY_REVIEW.md) - design and operational considerations
+- [Modernization plan](MODERNIZATION_PLAN.md) - completed upgrade work and remaining release tasks
+- [NuGet publishing guide](docs/NUGET_PUBLISHING.md) - secure, keyless publication through GitHub Actions
 - [Change log](CHANGELOG.md)
 
 ## Development
@@ -113,7 +113,7 @@ Generated output, IDE files, local test results, credentials, and test-client do
 
 - Target framework: .NET 10
 - SteamKit2: 3.5.0
-- Package status: pre-1.0 (`0.9.4`); public APIs may change before 1.0
+- Package status: pre-1.0 (`0.9.5`); public APIs may change before 1.0
 - Current encrypted V2 depot manifests are supported through Steam's branch-password flow. Legacy V1 encrypted manifest identifiers are intentionally not supported by current SteamKit2 versions.
 
 ## License

@@ -1,191 +1,144 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using SteamKitSDK.Core.Structs;
 using Microsoft.Extensions.Logging;
-using Nito.AsyncEx;
 using SteamKit2;
 using SteamKit2.CDN;
+using SteamKitSDK.ContentDelivery.Exceptions;
+using SteamKitSDK.Core.Structs;
 
-namespace SteamKitSDK.ContentDelivery
-{
+namespace SteamKitSDK.ContentDelivery;
+
 #nullable enable
 
-    public class SteamCdnServerPool : IDisposable
+public class SteamCdnServerPool : IDisposable
+{
+    private const int MinimumPoolSize = 10;
+    private readonly AppId _appId;
+    private readonly SteamContentClient _steamContentClient;
+    private readonly CancellationTokenSource _lifetime;
+    private readonly CancellationToken _lifetimeToken;
+    private readonly Task _populatorTask;
+    private readonly Channel<Server> _servers = Channel.CreateUnbounded<Server>();
+    private int _closed;
+
+    public ILogger? Logger { get; set; }
+    public Client CdnClient { get; }
+    public Server? DesignatedProxyServer { get; private set; }
+    public bool IsExhausted { get; private set; }
+
+    public SteamCdnServerPool(SteamContentClient steamContentClient, AppId appId,
+        CancellationToken cancellationToken = default)
     {
-        private const int MinimumPoolSize = 10;
-        private readonly ConcurrentStack<Server> _activeServerEndpoints;
-        private readonly AppId _appId;
-        private readonly BlockingCollection<Server> _availableServerEndpoints;
-        private readonly CancellationTokenSource _cancellationTokenSource;
-        private readonly AsyncManualResetEvent _populatedEvent;
-        private readonly AutoResetEvent _populatePoolEvent;
+        ArgumentNullException.ThrowIfNull(steamContentClient);
+        _steamContentClient = steamContentClient;
+        _appId = appId;
+        _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, steamContentClient.CancellationToken);
+        _lifetimeToken = _lifetime.Token;
+        CdnClient = new Client(steamContentClient.SteamClient.InternalClient);
+        _populatorTask = PopulateAsync();
+    }
 
-        private readonly Task _populatorTask;
-        private readonly SteamContentClient _steamContentClient;
+    public Server GetServer(CancellationToken cancellationToken = default)
+        => GetServerAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
 
-        public ILogger? Logger { get; set; }
-        public Client CdnClient { get; }
-        public Server? DesignatedProxyServer { get; private set; }
-        public bool IsExhausted { get; private set; }
-
-        public SteamCdnServerPool(
-            SteamContentClient steamContentClient,
-            AppId appId,
-            CancellationToken cancellationToken = default)
+    public async ValueTask<Server> GetServerAsync(CancellationToken cancellationToken = default)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetimeToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        try
         {
-            _steamContentClient = steamContentClient;
-            _appId = appId;
-            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _availableServerEndpoints = new BlockingCollection<Server>();
-            _activeServerEndpoints = new ConcurrentStack<Server>();
-            _populatePoolEvent = new AutoResetEvent(true);
-            _populatedEvent = new AsyncManualResetEvent(false);
-            _populatorTask = Task.Factory.StartNew(MonitorAsync).Unwrap();
-
-            CdnClient = new Client(_steamContentClient.SteamClient.InternalClient);
+            deadline.Token.ThrowIfCancellationRequested();
+            return await _servers.Reader.ReadAsync(deadline.Token).ConfigureAwait(false);
         }
-
-        public void Dispose()
+        catch (ChannelClosedException exception) when (!deadline.Token.IsCancellationRequested)
         {
-            Close();
+            throw new SteamNoContentServerFoundException(_appId, exception.InnerException ?? exception);
         }
-
-        public Server GetServer(CancellationToken cancellationToken = default)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested && !_lifetimeToken.IsCancellationRequested)
         {
-        using var linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _cancellationTokenSource.Token);
-            Server? server;
+            throw new SteamNoContentServerFoundException(_appId, exception);
+        }
+    }
 
-            do
+    public void ReturnServer(Server server, bool isFaulty)
+    {
+        if (!isFaulty && !_lifetimeToken.IsCancellationRequested) _servers.Writer.TryWrite(server);
+    }
+
+    private async Task PopulateAsync()
+    {
+        try
+        {
+            while (!_lifetimeToken.IsCancellationRequested)
             {
-                if (!_activeServerEndpoints.TryPop(out server))
+                if (_servers.Reader.Count < MinimumPoolSize)
                 {
-                    if (_availableServerEndpoints.Count < MinimumPoolSize && !_populatedEvent.IsSet)
-                    {
-                        Logger?.LogTrace("GetServerAsync: Set populatePoolEvent");
-                        _populatePoolEvent.Set();
+                    var servers = await GetServerListAsync().ConfigureAwait(false);
+                    var suitable = servers.Where(server =>
+                            (server.Type == "SteamCache" || server.Type == "CDN")
+                            && (server.AllowedAppIds.Length == 0 || server.AllowedAppIds.Contains(_appId)))
+                        .OrderBy(server => server.WeightedLoad).ToList();
+                    if (suitable.Count == 0) throw new SteamNoContentServerFoundException(_appId);
 
-                        //Logger?.LogTrace("GetServerAsync: Waiting for pool to be populated");
-                        //await _populatedEvent.WaitAsync(cancellationToken);
-                    }
-
-                    server = _availableServerEndpoints.Take(linkedCancellationTokenSource.Token);
-                }
-            } while (server == null);
-
-            return server;
-        }
-
-        public void ReturnServer(Server server, bool isFaulty)
-        {
-            if (isFaulty)
-            {
-                return;
-            }
-
-            _activeServerEndpoints.Push(server);
-        }
-
-        private async Task MonitorAsync()
-        {
-            while (!_cancellationTokenSource.IsCancellationRequested)
-            {
-                Logger?.LogTrace("MonitorAsync: Waiting for a few seconds before checking if pool needs population");
-                _populatePoolEvent.WaitOne(TimeSpan.FromSeconds(5));
-
-                Logger?.LogTrace("MonitorAsync: Checking");
-                if (_availableServerEndpoints.Count < MinimumPoolSize)
-                {
-                    Logger?.LogTrace("MonitorAsync: Pool will be populated");
-                    _populatedEvent.Reset();
-
-                    Logger?.LogTrace("MonitorAsync: Getting server list");
-                    var servers = await GetServerListAsync();
-
-                    Logger?.LogTrace("MonitorAsync: Got server list");
-
-                    if (servers.Count == 0)
-                    {
-                        IsExhausted = true;
-                        _populatedEvent.Set();
-                        _cancellationTokenSource.Cancel();
-
-                        return;
-                    }
-
-                    DesignatedProxyServer = servers.FirstOrDefault(x => x.UseAsProxy);
-
-                    var sortedServers = servers
-                        // Filter out servers that aren't relevant to us or our appid
-                        .Where(
-                            server =>
-                            {
-                                var isContentServer = server.Type == "SteamCache" || server.Type == "CDN";
-                                var allowsAppId = server.AllowedAppIds.Length == 0 ||
-                                                  server.AllowedAppIds.Contains(_appId);
-
-                                return isContentServer && allowsAppId;
-                            })
-                        .OrderBy(x => x.WeightedLoad);
-
-                    foreach (var server in sortedServers)
-                    {
-                        _availableServerEndpoints.Add(server);
-                    }
+                    DesignatedProxyServer = servers.FirstOrDefault(server => server.UseAsProxy);
+                    foreach (var server in suitable) _servers.Writer.TryWrite(server);
                 }
 
-                Logger?.LogTrace("MonitorAsync: Notifying that pool is populated");
-                _populatedEvent.Set();
+                await Task.Delay(TimeSpan.FromSeconds(5), _lifetimeToken).ConfigureAwait(false);
             }
         }
-
-
-        private async Task<IReadOnlyCollection<Server>> GetServerListAsync()
+        catch (OperationCanceledException) when (_lifetimeToken.IsCancellationRequested) { }
+        catch (Exception exception)
         {
-            var throttleDelay = 0;
+            IsExhausted = true;
+            _servers.Writer.TryComplete(exception);
+        }
+        finally
+        {
+            _servers.Writer.TryComplete();
+        }
+    }
 
-            while (!_cancellationTokenSource.IsCancellationRequested)
+    private async Task<IReadOnlyCollection<Server>> GetServerListAsync()
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(25));
+        for (var attempt = 1; ; attempt++)
+        {
+            try
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
-
-                try
-                {
-                    var cdnServers = await ContentServerDirectoryService.LoadAsync(
-                        _steamContentClient.SteamClient.InternalClient.Configuration,
-                        _steamContentClient.SteamClient.ActiveCellId,
-                        _cancellationTokenSource.Token);
-
-                    if (cdnServers == null)
-                    {
-                        throw new InvalidOperationException(
-                            "ContentServerDirectoryService did not return a list of servers.");
-                    }
-
-                    return cdnServers;
-                }
-                catch (Exception ex)
-                {
-                    if (ex is SteamKitWebRequestException { StatusCode: HttpStatusCode.TooManyRequests })
-                    {
-                        throttleDelay += 5;
-
-                        await Task.Delay(TimeSpan.FromSeconds(throttleDelay), _cancellationTokenSource.Token);
-                    }
-                }
+                Logger?.LogTrace("Discovering Steam CDN servers for app {AppId}, attempt {Attempt}", _appId, attempt);
+                return await ContentServerDirectoryService.LoadAsync(
+                    _steamContentClient.SteamClient.InternalClient.Configuration,
+                    _steamContentClient.SteamClient.ActiveCellId, deadline.Token)
+                    .WaitAsync(deadline.Token).ConfigureAwait(false)
+                    ?? throw new SteamNoContentServerFoundException(_appId);
             }
-
-            return new List<Server>();
+            catch (SteamKitWebRequestException exception) when (exception.StatusCode == HttpStatusCode.TooManyRequests && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5 * attempt), deadline.Token).ConfigureAwait(false);
+            }
         }
+    }
 
-        public void Close()
-        {
-            _cancellationTokenSource.Cancel();
-        }
+    public void Dispose() => Close();
+
+    public void Close()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0) return;
+        _lifetime.Cancel();
+        CdnClient.Dispose();
+        _ = DisposeLifetimeAsync();
+    }
+
+    private async Task DisposeLifetimeAsync()
+    {
+        await _populatorTask.ConfigureAwait(false);
+        _lifetime.Dispose();
     }
 }
